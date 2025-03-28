@@ -7,7 +7,6 @@ import joblib
 import logging
 import time
 import matplotlib.pyplot as plt
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -148,30 +147,13 @@ class IDDFSVacationRecommender:
     def _predict_with_iddfs(self, instance, max_depth):
         """IDDFS algoritması ile tahmin yap"""
         # Kademeli olarak derinliği artırarak arama yap
-        best_result = None
-        best_similarity = -1
-        
         for depth in range(1, max_depth + 1):
             result = self._depth_limited_search(instance, depth)
             if result is not None:
-                # Sonucun benzerlik değerini hesapla
-                profile = self.destination_profiles.get(result)
-                if profile is not None:
-                    similarity = self._calculate_similarity(instance, profile)
-                    # Daha iyi bir sonuç bulunduğunda güncelle
-                    if similarity > best_similarity:
-                        best_similarity = similarity
-                        best_result = result
-                        
-                        # Eğer benzerlik çok yüksekse, aramayı erken sonlandır
-                        if similarity > 0.85:
-                            return best_result
+                return result
         
-        # En iyi sonucu döndür, yoksa en yakın destinasyonu bul
-        if best_result is not None:
-            return best_result
-        else:
-            return self._find_closest_destination(instance)
+        # Hiçbir derinlikte sonuç bulunamadıysa, en yakın destinasyonu döndür
+        return self._find_closest_destination(instance)
     
     def _depth_limited_search(self, instance, depth):
         """Sınırlı derinlikte DFS algoritması"""
@@ -185,42 +167,12 @@ class IDDFSVacationRecommender:
         # Daha yüksek derinliklerde, daha fazla aday değerlendirilir
         num_candidates = max(1, int(len(candidates) / depth))
         
-        # Adaptif arama stratejisi: Derinlik arttıkça daha fazla aday değerlendir
-        if depth > 3:
-            num_candidates = max(num_candidates, int(len(candidates) * 0.3))  # En az %30 aday
-        
         # Her derinlik seviyesinde, adayları değerlendir ve en iyilerini seç
         for d in range(depth):
             scores = []
             for candidate in candidates:
                 profile = self.destination_profiles[candidate]
                 similarity = self._calculate_similarity(instance, profile)
-                
-                # Derinlik arttıkça benzerlik hesabını daha hassas yap
-                if d > 0:
-                    # Daha derin seviyelerde daha hassas benzerlik hesabı
-                    # Önceki benzerlik skoruna ek olarak, özellik bazlı benzerlikler ekle
-                    feature_similarities = []
-                    
-                    # Özellik bazlı benzerlikler
-                    for i, (feat_val, prof_val) in enumerate(zip(instance, profile)):
-                        # Özelliğe göre ağırlıklandırma
-                        weight = 1.0
-                        if i < len(self.feature_columns):
-                            if self.feature_columns[i] == 'user_satisfaction':
-                                weight = 1.5
-                            elif self.feature_columns[i] == 'value_score':
-                                weight = 1.3
-                        
-                        # Özellik benzerliği
-                        feat_diff = abs(feat_val - prof_val)
-                        feat_sim = 1.0 / (1.0 + feat_diff)
-                        feature_similarities.append(feat_sim * weight)
-                    
-                    # Özellik benzerliklerinin ortalamasını ekle
-                    if feature_similarities:
-                        similarity = 0.7 * similarity + 0.3 * np.mean(feature_similarities)
-                
                 scores.append((candidate, similarity))
             
             # En iyi benzerliğe sahip adayları seç
@@ -230,13 +182,6 @@ class IDDFSVacationRecommender:
             # Eğer sadece bir aday kaldıysa, onu döndür
             if len(candidates) == 1:
                 return candidates[0]
-            
-            # Eğer adaylar arasında çok küçük fark varsa, daha fazla aramaya gerek yok
-            if len(scores) >= 2:
-                best_score = scores[0][1]
-                second_best = scores[1][1]
-                if best_score > 0.8 and (best_score - second_best) < 0.05:
-                    return scores[0][0]  # En iyi adayı döndür
         
         # Son derinlikte birden fazla aday kaldıysa, en iyi olanı döndür
         if candidates:
@@ -252,112 +197,11 @@ class IDDFSVacationRecommender:
         return None
     
     def _calculate_similarity(self, instance, profile):
-        """İki profil arasındaki benzerliği hesapla - Geliştirilmiş versiyon"""
-        # Kategorik ve sayısal özellikleri ayrı değerlendir
-        categorical_indices = [i for i, col in enumerate(self.feature_columns) 
-                            if col in ['season', 'preferred_activity', 'destination']]
-        numerical_indices = [i for i, col in enumerate(self.feature_columns) 
-                            if col in ['budget', 'duration', 'value_score', 'user_satisfaction']]
-        
-        # Kategorik özellikler için benzerlik
-        categorical_similarity = 0.0
-        for i in categorical_indices:
-            if i < len(self.feature_columns):
-                feature_name = self.feature_columns[i]
-                # Özelliğe göre ağırlıklandırma
-                feature_weight = 1.0
-                if feature_name == 'preferred_activity':
-                    feature_weight = 1.4  # Aktivite tercihi daha önemli
-                elif feature_name == 'season':
-                    feature_weight = 1.3  # Sezon tercihi de önemli
-                
-                if instance[i] == profile[i]:
-                    # Tam eşleşme için yüksek bonus
-                    categorical_similarity += 1.0 * feature_weight
-                else:
-                    # Eşleşmeme için ceza (normalize edilmiş mesafe)
-                    diff = abs(instance[i] - profile[i])
-                    max_diff = len(self.label_encoders.get(feature_name, {}).classes_) - 1 if feature_name in self.label_encoders else 1
-                    if max_diff > 0:
-                        normalized_diff = diff / max_diff
-                        # Aktivite ve sezon uyumsuzluğu için daha yüksek ceza
-                        if feature_name in ['preferred_activity', 'season']:
-                            categorical_similarity -= normalized_diff * 0.7 * feature_weight
-                        else:
-                            categorical_similarity -= normalized_diff * 0.5 * feature_weight
-        
-        # Sayısal özellikler için benzerlik
-        numerical_similarity = 0.0
-        for i in numerical_indices:
-            if i < len(self.feature_columns):
-                feature_name = self.feature_columns[i]
-                # Özelliğe göre ağırlıklandırma - Kullanıcı memnuniyeti ve değer skoru ağırlıklarını artırıyoruz
-                weight = 1.0
-                if feature_name == 'user_satisfaction':
-                    weight = 2.0  # Kullanıcı memnuniyeti çok daha önemli (1.5'ten 2.0'a)
-                elif feature_name == 'value_score':
-                    weight = 1.7  # Değer skoru da çok önemli (1.3'ten 1.7'ye)
-                elif feature_name == 'budget':
-                    weight = 1.5  # Bütçe de önemli (1.2'den 1.5'e)
-                
-                # Mesafe hesapla
-                diff = abs(instance[i] - profile[i])
-                
-                # Özelliğe göre adaptif eşik değeri
-                if feature_name == 'budget':
-                    threshold = 0.4  # Bütçe için eşik (0.5'ten 0.4'e)
-                elif feature_name == 'user_satisfaction':
-                    threshold = 0.25  # Kullanıcı memnuniyeti için daha düşük eşik (0.3'ten 0.25'e)
-                elif feature_name == 'value_score':
-                    threshold = 0.3  # Değer skoru için eşik (0.4'ten 0.3'e)
-                else:
-                    threshold = 0.4  # Diğer özellikler için eşik
-                
-                # Eşik altındaki farklar için karesel benzerlik
-                if diff < threshold:
-                    numerical_similarity += (1 - (diff / threshold)**2) * weight
-                else:
-                    # Eşik üstü için lineer benzerlik - Daha yumuşak düşüş
-                    numerical_similarity += max(0, (1 - diff/2)) * weight * 0.6  # 0.5'ten 0.6'ya
-        
-        # Kategorik ve sayısal benzerlikler için ağırlıklı ortalama
-        # Sayısal özelliklere daha fazla ağırlık veriyoruz
-        total_similarity = (categorical_similarity * 0.35 + numerical_similarity * 0.65)  # 0.4/0.6'dan 0.35/0.65'e
-        
-        # Kullanıcı memnuniyeti ve değer skoru için ek bonus
-        user_sat_idx = -1
-        value_score_idx = -1
-        budget_idx = -1
-        
-        for i, col in enumerate(self.feature_columns):
-            if col == 'user_satisfaction':
-                user_sat_idx = i
-            elif col == 'value_score':
-                value_score_idx = i
-            elif col == 'budget':
-                budget_idx = i
-        
-        if user_sat_idx >= 0 and user_sat_idx < len(instance) and instance[user_sat_idx] > 0:
-            # Yüksek kullanıcı memnuniyeti için bonus - Artırıldı
-            user_sat_bonus = instance[user_sat_idx] * 0.3  # 0.2'den 0.3'e
-            total_similarity += user_sat_bonus
-        
-        if value_score_idx >= 0 and value_score_idx < len(instance) and instance[value_score_idx] > 0:
-            # Yüksek değer skoru için bonus - Artırıldı
-            value_score_bonus = instance[value_score_idx] * 0.25  # 0.15'ten 0.25'e
-            total_similarity += value_score_bonus
-        
-        # Bütçe uyumluluğu için ek bonus
-        if budget_idx >= 0 and budget_idx < len(instance) and instance[budget_idx] > 0:
-            budget_diff = abs(instance[budget_idx] - profile[budget_idx])
-            if budget_diff < 0.3:  # Bütçe farkı küçükse bonus ver
-                budget_bonus = (0.3 - budget_diff) * 0.5
-                total_similarity += budget_bonus
-        
-        # Benzerliği normalize et - Sigmoid fonksiyonu
-        normalized_similarity = 1.0 / (1.0 + np.exp(-total_similarity))
-        
-        return normalized_similarity
+        """İki profil arasındaki benzerliği hesapla (ters öklid mesafesi)"""
+        distance = np.sqrt(np.sum((instance - profile) ** 2))
+        # Mesafe ne kadar küçükse, benzerlik o kadar büyük
+        similarity = 1.0 / (1.0 + distance)
+        return similarity
     
     def _find_closest_destination(self, instance):
         """En yakın destinasyonu bul"""
@@ -381,49 +225,10 @@ class IDDFSVacationRecommender:
             # Kategorik değişkenler için encoding
             for col in self.label_encoders:
                 if col in user_preferences:
-                    try:
-                        features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
-                    except ValueError as e:
-                        logger.warning(f"{col} için encoding hatası: {str(e)}")
-                        # Bilinmeyen etiketler için en yakın bilinen etiketi bul
-                        if col == 'preferred_activity':
-                            # Bilinmeyen aktivite için fallback
-                            known_activities = self.label_encoders[col].classes_
-                            if 'Plaj' in known_activities:
-                                features[col] = self.label_encoders[col].transform(['Plaj'])[0]
-                                logger.info(f"Bilinmeyen aktivite için 'Plaj' kullanılıyor")
-                            elif 'Kültür' in known_activities:
-                                features[col] = self.label_encoders[col].transform(['Kültür'])[0]
-                                logger.info(f"Bilinmeyen aktivite için 'Kültür' kullanılıyor")
-                            else:
-                                # İlk sınıfı kullan
-                                features[col] = 0
-                        elif col == 'season':
-                            # Bilinmeyen sezon için fallback
-                            known_seasons = self.label_encoders[col].classes_
-                            if 'Yaz' in known_seasons:
-                                features[col] = self.label_encoders[col].transform(['Yaz'])[0]
-                                logger.info(f"Bilinmeyen sezon için 'Yaz' kullanılıyor")
-                            else:
-                                # İlk sınıfı kullan
-                                features[col] = 0
-                        else:
-                            features[col] = 0
+                    features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı! Varsayılan değer kullanılıyor.")
-                    # Varsayılan değerler kullan
-                    if col == 'season':
-                        try:
-                            features[col] = self.label_encoders[col].transform(['Yaz'])[0]
-                        except:
-                            features[col] = 0
-                    elif col == 'preferred_activity':
-                        try:
-                            features[col] = self.label_encoders[col].transform(['Plaj'])[0]
-                        except:
-                            features[col] = 0
-                    else:
-                        features[col] = 0
+                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
+                    return None
             
             # Sayısal değişkenler
             numerical_data = {}
@@ -431,17 +236,12 @@ class IDDFSVacationRecommender:
                 if col in user_preferences:
                     numerical_data[col] = user_preferences[col]
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı! Varsayılan değer kullanılıyor.")
-                    # Varsayılan değerler kullan
-                    if col == 'budget':
-                        numerical_data[col] = 10000
-                    elif col == 'duration':
-                        numerical_data[col] = 7
+                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
+                    return None
             
             # Olmayan değerleri tahmin et (value_score ve user_satisfaction)
-            # Daha yüksek varsayılan değerler kullanıyoruz
-            numerical_data['value_score'] = 4.0  # Daha yüksek varsayılan değer (3.5'ten 4.0'a)
-            numerical_data['user_satisfaction'] = 4.5  # Daha yüksek varsayılan değer (4.0'dan 4.5'e)
+            numerical_data['value_score'] = 3.5  # Ortalama bir değer
+            numerical_data['user_satisfaction'] = 4.0  # Ortalama bir değer
             
             # Sayısal verileri ölçeklendir
             numerical_features = np.array([[
@@ -449,35 +249,22 @@ class IDDFSVacationRecommender:
                 numerical_data['duration'],
                 numerical_data['value_score'],
                 numerical_data['user_satisfaction']
-            ]], dtype=np.float64)  # Veri tipini açıkça belirt
-            
-            # Feature names ekleyerek uyarıları önle
-            numerical_df = pd.DataFrame(numerical_features, 
-                                      columns=['budget', 'duration', 'value_score', 'user_satisfaction'])
-            
-            try:
-                scaled_numerical = self.scaler.transform(numerical_df)
-            except Exception as e:
-                logger.error(f"Ölçeklendirme hatası: {str(e)}")
-                # Ölçeklendirme yapılamazsa, ham verileri kullan
-                scaled_numerical = numerical_features
+            ]])
+            scaled_numerical = self.scaler.transform(numerical_features)
             
             # Tüm özellikleri birleştir
-            instance = np.zeros(len(self.feature_columns), dtype=np.float64)  # Veri tipini açıkça belirt
+            instance = np.zeros(len(self.feature_columns))
             feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
             
             # Kategorik değerleri yerleştir
             for col, value in features.items():
                 if col in feature_indices:
-                    instance[feature_indices[col]] = float(value)  # float'a dönüştür
+                    instance[feature_indices[col]] = value
             
             # Sayısal değerleri yerleştir
             for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
                 if col in feature_indices:
-                    instance[feature_indices[col]] = float(scaled_numerical[0, i])  # float'a dönüştür
-            
-            # Bellek düzenini garanti et
-            instance = np.ascontiguousarray(instance)
+                    instance[feature_indices[col]] = scaled_numerical[0, i]
             
             # IDDFS ile tahmin yap
             destination_idx = self._predict_with_iddfs(instance, self.max_depth)
@@ -486,92 +273,50 @@ class IDDFSVacationRecommender:
             best_profile = self.destination_profiles[destination_idx]
             confidence = self._calculate_similarity(instance, best_profile)
             
-            # Destinasyon adını bul
-            destination_name = None
-            for name, idx in self.destination_encodings.items():
-                if idx == destination_idx:
-                    destination_name = name
-                    break
-            
-            return {'destination': destination_name, 'confidence': float(confidence)}
+            return {'destination': destination_idx, 'confidence': float(confidence)}
         
         except Exception as e:
             logger.error(f"Tahmin hatası: {str(e)}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
     def save_model(self):
         """Modeli kaydet"""
-        import os
-        import logging
+        # Label encoder'ları kaydet
+        joblib.dump(self.label_encoders, 'models/iddfs_label_encoders.joblib')
         
-        logger = logging.getLogger(__name__)
+        # Scaler'ı kaydet
+        joblib.dump(self.scaler, 'models/iddfs_scaler.joblib')
         
-        try:
-            # Label encoder'ları kaydet
-            joblib.dump(self.label_encoders, 'saved_models/iddfs_label_encoders.joblib')
-            
-            # Scaler'ı kaydet
-            joblib.dump(self.scaler, 'saved_models/iddfs_scaler.joblib')
-            
-            # Özellik sütunlarını kaydet
-            joblib.dump(self.feature_columns, 'saved_models/iddfs_feature_columns.joblib')
-            
-            # Destinasyon profillerini kaydet
-            joblib.dump(self.destination_profiles, 'saved_models/iddfs_destination_profiles.joblib')
-            
-            # Destinasyon kodlamalarını kaydet
-            joblib.dump(self.destination_encodings, 'saved_models/iddfs_destination_encodings.joblib')
-            
-            # Destinasyonları kaydet
-            joblib.dump(self.destinations, 'saved_models/iddfs_destinations.joblib')
-            
-            # Maksimum derinliği kaydet
-            joblib.dump(self.max_depth, 'saved_models/iddfs_max_depth.joblib')
-            
-            logger.info("IDDFS modeli başarıyla kaydedildi")
-            return True
-        except Exception as e:
-            logger.error(f"Model kaydetme hatası: {str(e)}")
-            return False
+        # Feature kolonlarını kaydet
+        joblib.dump(self.feature_columns, 'models/iddfs_feature_columns.joblib')
+        
+        # Destinasyon profillerini kaydet
+        joblib.dump(self.destination_profiles, 'models/iddfs_destination_profiles.joblib')
+        
+        # Maksimum derinliği kaydet
+        joblib.dump(self.max_depth, 'models/iddfs_max_depth.joblib')
+        
+        logger.info("IDDFS modeli kaydedildi")
     
     def load_model(self):
         """Modeli yükle"""
-        import os
-        import logging
-        
-        logger = logging.getLogger(__name__)
-        
         try:
             # Label encoder'ları yükle
-            self.label_encoders = joblib.load('saved_models/iddfs_label_encoders.joblib')
+            self.label_encoders = joblib.load('models/iddfs_label_encoders.joblib')
             
             # Scaler'ı yükle
-            self.scaler = joblib.load('saved_models/iddfs_scaler.joblib')
+            self.scaler = joblib.load('models/iddfs_scaler.joblib')
             
-            # Özellik sütunlarını yükle
-            self.feature_columns = joblib.load('saved_models/iddfs_feature_columns.joblib')
+            # Feature kolonlarını yükle
+            self.feature_columns = joblib.load('models/iddfs_feature_columns.joblib')
             
             # Destinasyon profillerini yükle
-            self.destination_profiles = joblib.load('saved_models/iddfs_destination_profiles.joblib')
-            
-            # Destinasyon kodlamalarını yükle
-            try:
-                self.destination_encodings = joblib.load('saved_models/iddfs_destination_encodings.joblib')
-            except:
-                logger.warning("Destinasyon kodlamaları yüklenemedi.")
-            
-            # Destinasyonları yükle
-            try:
-                self.destinations = joblib.load('saved_models/iddfs_destinations.joblib')
-            except:
-                logger.warning("Destinasyonlar yüklenemedi.")
+            self.destination_profiles = joblib.load('models/iddfs_destination_profiles.joblib')
             
             # Maksimum derinliği yükle
-            self.max_depth = joblib.load('saved_models/iddfs_max_depth.joblib')
+            self.max_depth = joblib.load('models/iddfs_max_depth.joblib')
             
-            logger.info("IDDFS modeli başarıyla yüklendi")
+            logger.info("IDDFS modeli yüklendi")
             return True
         except Exception as e:
             logger.error(f"Model yükleme hatası: {str(e)}")

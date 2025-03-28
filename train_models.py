@@ -152,8 +152,8 @@ def main():
         df = generate_data()
     
     # Tüm modelleri tek seferde eğit ve karşılaştır
-    train_a_star(df)
-    # train_genetic_algorithm(df)
+    # train_a_star(df)
+    train_genetic_algorithm(df)
     # train_iddfs(df)
     # train_knn(df)
     # train_decision_tree(df)

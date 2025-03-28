@@ -16,58 +16,37 @@ class KNNVacationRecommender:
         self.label_encoders = {}
         self.scaler = None
         self.feature_columns = None
-        self.feature_weights = None
         
     def train(self, df):
         """K-En Yakın Komşu (KNN) modelini eğit"""
-        import matplotlib.pyplot as plt
-        from sklearn.metrics import confusion_matrix, classification_report
-        import logging
-        import os
+        logger.info("KNN model eğitimi başlıyor...")
         
-        logger = logging.getLogger(__name__)
-        
-        # Eğitim için gerekli dizinleri oluştur
-        os.makedirs("models", exist_ok=True)
-        
-        # Veri setini hazırla
-        X = df.drop('destination', axis=1)
-        y = df['destination']
+        # Gereksiz sütunları kaldır
+        columns_to_drop = ['user_id', 'hotel_price_per_night', 'flight_cost', 'total_cost']
+        df = df.drop(columns_to_drop, axis=1)
         
         # Kategorik değişkenleri encode et
-        categorical_cols = ['season', 'preferred_activity']
-        for col in categorical_cols:
-            le = LabelEncoder()
-            X[col] = le.fit_transform(X[col].astype(str))
-            self.label_encoders[col] = le
+        categorical_features = ['season', 'preferred_activity', 'destination']
+        
+        for col in categorical_features:
+            if col in df.columns:
+                df[col] = df[col].astype(str)
+                le = LabelEncoder()
+                df[col] = le.fit_transform(df[col])
+                self.label_encoders[col] = le
         
         # Sayısal değişkenleri ölçeklendir
-        numerical_cols = ['budget', 'duration', 'value_score', 'user_satisfaction']
+        numerical_features = ['budget', 'duration', 'value_score', 'user_satisfaction']
         self.scaler = StandardScaler()
-        X[numerical_cols] = self.scaler.fit_transform(X[numerical_cols])
+        df[numerical_features] = self.scaler.fit_transform(df[numerical_features])
         
-        # Özellik sütunlarını kaydet
-        self.feature_columns = X.columns.tolist()
-        
-        # Özellik ağırlıkları - kullanıcı memnuniyetini daha fazla önemse
-        feature_weights = {}
-        for col in self.feature_columns:
-            if col == 'user_satisfaction':
-                feature_weights[col] = 2.0  # Kullanıcı memnuniyeti çok daha önemli
-            elif col == 'value_score':
-                feature_weights[col] = 1.5  # Değer skoru da önemli
-            elif col == 'budget':
-                feature_weights[col] = 1.3  # Bütçe de önemli
-            else:
-                feature_weights[col] = 1.0  # Diğer özellikler standart ağırlık
-        
-        # Ağırlıklandırılmış özellikler oluştur
-        X_weighted = X.copy()
-        for col, weight in feature_weights.items():
-            X_weighted[col] = X_weighted[col] * weight
+        # Feature'ları ve target'ı ayır
+        self.feature_columns = ['season', 'preferred_activity', 'destination', 'budget', 'duration', 'value_score', 'user_satisfaction']
+        X = df[self.feature_columns]
+        y = df['recommended_vacation']
         
         # Train-test split
-        X_train, X_test, y_train, y_test = train_test_split(X_weighted, y, test_size=0.2, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         
         # K değerini belirlemek için elbow yöntemi
         error_rates = []
@@ -97,13 +76,12 @@ class KNNVacationRecommender:
         optimal_k = candidate_k_values[np.argmin(error_rates)]
         logger.info(f"Optimal K değeri: {optimal_k}")
         
-        # Hiperparametre grid'i - daha kapsamlı arama
+        # Hiperparametre grid'i
         param_grid = {
-            'n_neighbors': [max(1, optimal_k - 4), max(1, optimal_k - 2), optimal_k, min(30, optimal_k + 2), min(30, optimal_k + 4)],
+            'n_neighbors': [max(1, optimal_k - 2), optimal_k, min(30, optimal_k + 2)],
             'weights': ['uniform', 'distance'],
-            'metric': ['euclidean', 'manhattan', 'minkowski', 'chebyshev'],
-            'p': [1, 2, 3],  # p=1 for manhattan, p=2 for euclidean, p=3 for minkowski
-            'algorithm': ['auto', 'ball_tree', 'kd_tree', 'brute']
+            'metric': ['euclidean', 'manhattan', 'minkowski'],
+            'p': [1, 2]  # p=1 for manhattan, p=2 for euclidean
         }
         
         # Base model
@@ -124,9 +102,6 @@ class KNNVacationRecommender:
         
         # En iyi modeli al
         self.knn_model = grid_search.best_estimator_
-        
-        # Özellik ağırlıklarını kaydet (tahmin sırasında kullanmak için)
-        self.feature_weights = feature_weights
         
         # Model performansını değerlendir
         logger.info(f"\nEn iyi parametreler: {grid_search.best_params_}")
@@ -156,58 +131,19 @@ class KNNVacationRecommender:
             # Kategorik değişkenler için encoding
             for col in self.label_encoders:
                 if col in user_preferences:
-                    try:
-                        # Eğer etiket daha önce görülmemişse, en yakın etiketi bul
-                        if str(user_preferences[col]) not in self.label_encoders[col].classes_:
-                            logger.warning(f"{col} için '{user_preferences[col]}' etiketi eğitim verilerinde bulunmuyor.")
-                            # Varsayılan değer kullan
-                            if col == 'season':
-                                features[col] = self.label_encoders[col].transform(['Yaz'])[0]
-                            elif col == 'preferred_activity':
-                                features[col] = self.label_encoders[col].transform(['Plaj'])[0]
-                            else:
-                                # Rastgele bir sınıf seç (ilk sınıfı)
-                                features[col] = self.label_encoders[col].transform([self.label_encoders[col].classes_[0]])[0]
-                        else:
-                            features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
-                    except ValueError as e:
-                        logger.warning(f"{col} için encoding hatası: {str(e)}")
-                        # Varsayılan değer kullan
-                        if col == 'season':
-                            features[col] = self.label_encoders[col].transform(['Yaz'])[0]
-                        elif col == 'preferred_activity':
-                            features[col] = self.label_encoders[col].transform(['Plaj'])[0]
-                        else:
-                            # Rastgele bir sınıf seç (ilk sınıfı)
-                            features[col] = self.label_encoders[col].transform([self.label_encoders[col].classes_[0]])[0]
+                    features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı! Varsayılan değer kullanılıyor.")
-                    # Varsayılan değerler kullan
-                    if col == 'season':
-                        try:
-                            features[col] = self.label_encoders[col].transform(['Yaz'])[0]
-                        except:
-                            features[col] = 0
-                    elif col == 'preferred_activity':
-                        try:
-                            features[col] = self.label_encoders[col].transform(['Plaj'])[0]
-                        except:
-                            features[col] = 0
-                    else:
-                        features[col] = 0
+                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
+                    return None
             
             # Sayısal değişkenler
             numerical_data = {}
             for col in ['budget', 'duration']:
                 if col in user_preferences:
-                    numerical_data[col] = float(user_preferences[col])  # Açıkça float'a dönüştür
+                    numerical_data[col] = user_preferences[col]
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı! Varsayılan değer kullanılıyor.")
-                    # Varsayılan değerler kullan
-                    if col == 'budget':
-                        numerical_data[col] = 10000.0
-                    elif col == 'duration':
-                        numerical_data[col] = 7.0
+                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
+                    return None
             
             # Olmayan değerleri tahmin et (value_score ve user_satisfaction)
             numerical_data['value_score'] = 3.5  # Ortalama bir değer
@@ -219,103 +155,36 @@ class KNNVacationRecommender:
                 numerical_data['duration'],
                 numerical_data['value_score'],
                 numerical_data['user_satisfaction']
-            ]], dtype=np.float64)  # Veri tipini açıkça belirt
+            ]])
+            scaled_numerical = self.scaler.transform(numerical_features)
             
-            # Feature names ekleyerek uyarıları önle
-            numerical_df = pd.DataFrame(numerical_features, 
-                                      columns=['budget', 'duration', 'value_score', 'user_satisfaction'])
-            
-            try:
-                scaled_numerical = self.scaler.transform(numerical_df)
-            except Exception as e:
-                logger.error(f"Ölçeklendirme hatası: {str(e)}")
-                # Ölçeklendirme yapılamazsa, ham verileri kullan
-                scaled_numerical = numerical_features
-            
-            # Tüm özellikleri birleştir - veri tipini açıkça belirt
-            X_pred = np.zeros((1, len(self.feature_columns)), dtype=np.float64)
+            # Tüm özellikleri birleştir
+            X_pred = np.zeros((1, len(self.feature_columns)))
             feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
             
             # Kategorik değerleri yerleştir
             for col, value in features.items():
                 if col in feature_indices:
-                    X_pred[0, feature_indices[col]] = float(value)  # float'a dönüştür
+                    X_pred[0, feature_indices[col]] = value
             
             # Sayısal değerleri yerleştir
             for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
                 if col in feature_indices:
-                    X_pred[0, feature_indices[col]] = float(scaled_numerical[0, i])  # float'a dönüştür
-            
-            # Özellik ağırlıklandırma - kullanıcı memnuniyetini daha fazla önemse
-            if hasattr(self, 'feature_weights') and self.feature_weights:
-                for col, weight in self.feature_weights.items():
-                    if col in feature_indices:
-                        # Kullanıcı memnuniyeti ağırlığını artır
-                        if col == 'user_satisfaction':
-                            X_pred[0, feature_indices[col]] *= float(weight) * 1.5  # Ek ağırlık
-                        else:
-                            X_pred[0, feature_indices[col]] *= float(weight)  # float'a dönüştür
-            
-            # X_pred'in bellek düzenini garanti et
-            X_pred = np.ascontiguousarray(X_pred)
+                    X_pred[0, feature_indices[col]] = scaled_numerical[0, i]
             
             # Tahmin yap
-            try:
-                destination = self.knn_model.predict(X_pred)[0]
-                
-                # Komşuluk mesafeleri ve en yakın komşular hakkında bilgi
-                distances, indices = self.knn_model.kneighbors(X_pred)
-                
-                # Geliştirilmiş güven hesabı: Mesafelerin ters ağırlıklı ortalaması
-                if len(distances[0]) > 0:
-                    # Mesafelerin tersini al (daha yakın = daha yüksek değer)
-                    inverse_distances = 1.0 / (distances[0] + 1e-6)
-                    # Normalize et
-                    weights = inverse_distances / np.sum(inverse_distances)
-                    
-                    # Ağırlıklı güven değeri
-                    confidence = np.sum(weights) / len(weights)
-                    # Sigmoid fonksiyonu ile 0-1 aralığına normalize et
-                    confidence = 1.0 / (1.0 + np.exp(-5 * (confidence - 0.5)))
-                else:
-                    confidence = 0.5
-                
-                return {'destination': destination, 'confidence': float(confidence)}
-            except Exception as e:
-                logger.error(f"KNN tahmin hatası: {str(e)}")
-                # Fallback olarak en yakın komşuları manuel olarak bul
-                try:
-                    # Eğitim verilerini al
-                    X_train = self.knn_model._fit_X
-                    y_train = self.knn_model._y
-                    
-                    # Öklid mesafelerini hesapla
-                    distances = np.sqrt(np.sum((X_train - X_pred) ** 2, axis=1))
-                    
-                    # En yakın k komşuyu bul
-                    k = min(5, len(distances))
-                    nearest_indices = np.argsort(distances)[:k]
-                    
-                    # En sık görülen sınıfı bul
-                    from collections import Counter
-                    nearest_classes = [y_train[i] for i in nearest_indices]
-                    most_common = Counter(nearest_classes).most_common(1)[0][0]
-                    
-                    # Güven değeri hesapla
-                    confidence = 1.0 / (1.0 + np.mean(distances[nearest_indices]))
-                    
-                    return {'destination': most_common, 'confidence': float(confidence)}
-                except Exception as nested_e:
-                    logger.error(f"Fallback tahmin hatası: {str(nested_e)}")
-                    # Son çare olarak rastgele bir destinasyon döndür
-                    import random
-                    destinations = ['Antalya', 'Bodrum', 'İstanbul', 'Kapadokya', 'Uludağ']
-                    return {'destination': random.choice(destinations), 'confidence': 0.3}
+            destination = self.knn_model.predict(X_pred)[0]
+            
+            # Komşuluk mesafeleri ve en yakın komşular hakkında bilgi
+            distances, indices = self.knn_model.kneighbors(X_pred)
+            
+            # Güven değeri oluştur (en yakın komşu mesafelerine göre)
+            confidence = 1.0 / (1.0 + np.mean(distances[0]))
+            
+            return {'destination': destination, 'confidence': float(confidence)}
         
         except Exception as e:
             logger.error(f"Tahmin hatası: {str(e)}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
     
     def predict_top_n(self, user_preferences, top_n=5):
@@ -331,41 +200,32 @@ class KNNVacationRecommender:
         """
         if self.knn_model is None:
             logger.error("Model eğitilmemiş!")
-            return None
+            return []
         
         try:
             # Kullanıcı tercihlerini ön işle
             features = {}
             
             # Kategorik değişkenler için encoding
-            for col in self.label_encoders:
-                if col in user_preferences:
-                    try:
-                        features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
-                    except ValueError as e:
-                        logger.warning(f"{col} için encoding hatası: {str(e)}")
-                        # Varsayılan değer kullan
-                        if col == 'season':
-                            features[col] = self.label_encoders[col].transform(['Yaz'])[0]
-                        elif col == 'preferred_activity':
-                            features[col] = self.label_encoders[col].transform(['Plaj'])[0]
-                        else:
-                            features[col] = 0
-                else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı! Varsayılan değer kullanılıyor.")
-                    # Varsayılan değerler kullan
-                    if col == 'season':
-                        try:
-                            features[col] = self.label_encoders[col].transform(['Yaz'])[0]
-                        except:
-                            features[col] = 0
-                    elif col == 'preferred_activity':
-                        try:
-                            features[col] = self.label_encoders[col].transform(['Plaj'])[0]
-                        except:
-                            features[col] = 0
-                    else:
-                        features[col] = 0
+            season = user_preferences.get('season')
+            preferred_activity = user_preferences.get('preferred_activity')
+            destination = user_preferences.get('destination', None)
+            
+            if season and 'season' in self.label_encoders:
+                features['season'] = self.label_encoders['season'].transform([str(season)])[0]
+            else:
+                logger.warning(f"season kullanıcı tercihlerinde bulunamadı veya label encoder yok!")
+                return []
+                
+            if preferred_activity and 'preferred_activity' in self.label_encoders:
+                features['preferred_activity'] = self.label_encoders['preferred_activity'].transform([str(preferred_activity)])[0]
+            else:
+                logger.warning(f"preferred_activity kullanıcı tercihlerinde bulunamadı veya label encoder yok!")
+                return []
+            
+            # Destination belirtilmişse ekle, belirtilmemişse tüm destinasyonlar için tahmin yapacağız
+            if destination and 'destination' in self.label_encoders:
+                features['destination'] = self.label_encoders['destination'].transform([str(destination)])[0]
             
             # Sayısal değişkenler
             numerical_data = {}
@@ -373,101 +233,72 @@ class KNNVacationRecommender:
                 if col in user_preferences:
                     numerical_data[col] = user_preferences[col]
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı! Varsayılan değer kullanılıyor.")
-                    # Varsayılan değerler kullan
-                    if col == 'budget':
-                        numerical_data[col] = 10000
-                    elif col == 'duration':
-                        numerical_data[col] = 7
+                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
+                    return []
             
             # Olmayan değerleri tahmin et (value_score ve user_satisfaction)
             numerical_data['value_score'] = 3.5  # Ortalama bir değer
             numerical_data['user_satisfaction'] = 4.0  # Ortalama bir değer
             
-            # Sayısal verileri ölçeklendir
-            numerical_features = np.array([[
-                numerical_data['budget'],
-                numerical_data['duration'],
-                numerical_data['value_score'],
-                numerical_data['user_satisfaction']
-            ]], dtype=np.float64)  # Veri tipini açıkça belirt
+            # Tüm destinasyonlar için tahmin yap
+            all_destinations = self.label_encoders['destination'].classes_
+            recommendations = []
             
-            # Feature names ekleyerek uyarıları önle
-            numerical_df = pd.DataFrame(numerical_features, 
-                                      columns=['budget', 'duration', 'value_score', 'user_satisfaction'])
-            
-            try:
-                scaled_numerical = self.scaler.transform(numerical_df)
-            except Exception as e:
-                logger.error(f"Ölçeklendirme hatası: {str(e)}")
-                # Ölçeklendirme yapılamazsa, ham verileri kullan
-                scaled_numerical = numerical_features
-            
-            # Tüm özellikleri birleştir - veri tipini açıkça belirt
-            X_pred = np.zeros((1, len(self.feature_columns)), dtype=np.float64)
-            feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
-            
-            # Kategorik değerleri yerleştir
-            for col, value in features.items():
-                if col in feature_indices:
-                    X_pred[0, feature_indices[col]] = float(value)  # float'a dönüştür
-            
-            # Sayısal değerleri yerleştir
-            for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
-                if col in feature_indices:
-                    X_pred[0, feature_indices[col]] = float(scaled_numerical[0, i])  # float'a dönüştür
-            
-            # Özellik ağırlıklandırma
-            if hasattr(self, 'feature_weights') and self.feature_weights:
-                for col, weight in self.feature_weights.items():
+            for dest in all_destinations:
+                # Destination'ı encoding et
+                dest_encoded = self.label_encoders['destination'].transform([dest])[0]
+                
+                # Tüm özellikleri birleştir
+                X_pred = np.zeros((1, len(self.feature_columns)))
+                feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
+                
+                # Kategorik değerleri yerleştir
+                for col, value in features.items():
                     if col in feature_indices:
-                        X_pred[0, feature_indices[col]] *= float(weight)  # float'a dönüştür
+                        X_pred[0, feature_indices[col]] = value
+                
+                # Destination değerini yerleştir
+                X_pred[0, feature_indices['destination']] = dest_encoded
+                
+                # Sayısal değerleri ölçeklendir
+                numerical_features = np.array([[
+                    numerical_data['budget'],
+                    numerical_data['duration'],
+                    numerical_data['value_score'],
+                    numerical_data['user_satisfaction']
+                ]])
+                scaled_numerical = self.scaler.transform(numerical_features)
+                
+                # Sayısal değerleri yerleştir
+                for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
+                    if col in feature_indices:
+                        X_pred[0, feature_indices[col]] = scaled_numerical[0, i]
+                
+                # Tahmin yap
+                distances, indices = self.knn_model.kneighbors(X_pred)
+                confidence = 1.0 / (1.0 + np.mean(distances))  # Mesafeyi güven skoruna dönüştür
+                
+                # Eğer güven değeri yeterince yüksekse, bu destinasyonu öneriler listesine ekle
+                if confidence > 0.1:  # Minimum güven eşiği
+                    # Destinasyon bilgilerini al
+                    costs = self.calculate_costs(dest, user_preferences.get('duration', 7))
+                    
+                    recommendations.append({
+                        'destination': dest,
+                        'confidence': float(confidence),
+                        'algorithm_confidence': float(confidence),
+                        'season': season,
+                        'activity': preferred_activity,
+                        'costs': costs
+                    })
             
-            # X_pred'in bellek düzenini garanti et
-            X_pred = np.ascontiguousarray(X_pred)
-            
-            # En yakın komşuları bul
-            distances, indices = self.knn_model.kneighbors(X_pred, n_neighbors=min(top_n * 2, len(self.knn_model._fit_X)))
-            
-            # Her bir komşunun sınıfını ve mesafesini al
-            neighbors = []
-            for i, neighbor_idx in enumerate(indices[0]):
-                neighbor_class = self.knn_model._y[neighbor_idx]
-                neighbor_distance = distances[0][i]
-                neighbors.append((neighbor_class, neighbor_distance))
-            
-            # Sınıfları ve mesafeleri grupla
-            class_distances = {}
-            for cls, dist in neighbors:
-                if cls not in class_distances:
-                    class_distances[cls] = []
-                class_distances[cls].append(dist)
-            
-            # Her sınıf için ortalama mesafeyi ve güven skorunu hesapla
-            class_scores = []
-            for cls, dists in class_distances.items():
-                avg_dist = np.mean(dists)
-                # Mesafe ne kadar küçükse, skor o kadar büyük
-                confidence = 1.0 / (1.0 + avg_dist)
-                class_scores.append((cls, confidence))
-            
-            # En yüksek skorlu top_n sınıfı seç
-            class_scores.sort(key=lambda x: x[1], reverse=True)
-            top_classes = class_scores[:top_n]
-            
-            # Sonuçları formatla
-            results = []
-            for cls, confidence in top_classes:
-                results.append({
-                    'destination': cls,
-                    'confidence': float(confidence)
-                })
-            
-            return results
+            # Güven değerine göre sırala ve en iyi top_n tanesini döndür
+            recommendations.sort(key=lambda x: x['confidence'], reverse=True)
+            return recommendations[:top_n]
         
         except Exception as e:
-            logger.error(f"Top-N tahmin hatası: {str(e)}")
-            return None
+            logger.error(f"Tahmin hatası: {str(e)}")
+            return []
     
     def calculate_costs(self, destination, duration):
         """
@@ -506,67 +337,40 @@ class KNNVacationRecommender:
     
     def save_model(self):
         """Modeli kaydet"""
-        import joblib
-        import os
-        import logging
-        
-        logger = logging.getLogger(__name__)
-        
         if self.knn_model is None:
             logger.error("Kaydedilecek model yok!")
             return
         
         # Modeli kaydet
-        joblib.dump(self.knn_model, 'saved_models/knn_model.joblib')
+        joblib.dump(self.knn_model, 'models/knn_model.joblib')
         
         # Label encoder'ları kaydet
-        joblib.dump(self.label_encoders, 'saved_models/knn_label_encoders.joblib')
+        joblib.dump(self.label_encoders, 'models/knn_label_encoders.joblib')
         
         # Scaler'ı kaydet
-        joblib.dump(self.scaler, 'saved_models/knn_scaler.joblib')
+        joblib.dump(self.scaler, 'models/knn_scaler.joblib')
         
-        # Özellik ağırlıklarını kaydet
-        if self.feature_weights is not None:
-            joblib.dump(self.feature_weights, 'saved_models/knn_feature_weights.joblib')
+        # Feature kolonlarını kaydet
+        joblib.dump(self.feature_columns, 'models/knn_feature_columns.joblib')
         
-        # Özellik sütunlarını kaydet
-        if self.feature_columns is not None:
-            joblib.dump(self.feature_columns, 'saved_models/knn_feature_columns.joblib')
-        
-        logger.info("KNN modeli kaydedildi.")
-        return True
+        logger.info("KNN modeli kaydedildi")
     
     def load_model(self):
         """Modeli yükle"""
-        import joblib
-        import os
-        import logging
-        
-        logger = logging.getLogger(__name__)
-        
         try:
             # Modeli yükle
-            self.knn_model = joblib.load('saved_models/knn_model.joblib')
+            self.knn_model = joblib.load('models/knn_model.joblib')
             
             # Label encoder'ları yükle
-            self.label_encoders = joblib.load('saved_models/knn_label_encoders.joblib')
+            self.label_encoders = joblib.load('models/knn_label_encoders.joblib')
             
             # Scaler'ı yükle
-            self.scaler = joblib.load('saved_models/knn_scaler.joblib')
+            self.scaler = joblib.load('models/knn_scaler.joblib')
             
-            # Özellik ağırlıklarını yükle
-            try:
-                self.feature_weights = joblib.load('saved_models/knn_feature_weights.joblib')
-            except:
-                logger.warning("Özellik ağırlıkları yüklenemedi.")
+            # Feature kolonlarını yükle
+            self.feature_columns = joblib.load('models/knn_feature_columns.joblib')
             
-            # Özellik sütunlarını yükle
-            try:
-                self.feature_columns = joblib.load('saved_models/knn_feature_columns.joblib')
-            except:
-                logger.warning("Özellik sütunları yüklenemedi.")
-            
-            logger.info("KNN modeli başarıyla yüklendi.")
+            logger.info("KNN modeli yüklendi")
             return True
         except Exception as e:
             logger.error(f"Model yükleme hatası: {str(e)}")
