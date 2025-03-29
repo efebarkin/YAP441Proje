@@ -16,7 +16,7 @@
             </head>
             <body>
                 <h1>Yapay Zeka Modelleri Karşılaştırma Raporu</h1>
-                <p>Oluşturulma Tarihi: 2025-03-05 16:05:34</p>
+                <p>Oluşturulma Tarihi: 2025-03-29 16:38:10</p>
                 
                 <h2>Performans Metrikleri Karşılaştırması</h2>
                 <table>
@@ -31,6 +31,61 @@
                         <th>Çıkarım Süresi (ms)</th>
                     </tr>
             
+                    <tr>
+                        <td>Decision Tree</td>
+                        <td>0.1740</td>
+                        <td>0.0303</td>
+                        <td>0.1740</td>
+                        <td>0.0516</td>
+                        <td>1.0000</td>
+                        <td>0.00</td>
+                        <td>5.80</td>
+                    </tr>
+                
+                    <tr>
+                        <td>KNN</td>
+                        <td>0.3830</td>
+                        <td>0.7049</td>
+                        <td>0.3830</td>
+                        <td>0.3428</td>
+                        <td>0.1505</td>
+                        <td>0.00</td>
+                        <td>6.81</td>
+                    </tr>
+                
+                    <tr>
+                        <td>IDDFS</td>
+                        <td>0.4380</td>
+                        <td>0.5231</td>
+                        <td>0.4380</td>
+                        <td>0.3559</td>
+                        <td>0.5219</td>
+                        <td>0.00</td>
+                        <td>7.60</td>
+                    </tr>
+                
+                    <tr>
+                        <td>Genetic Algorithm</td>
+                        <td>0.1920</td>
+                        <td>0.1561</td>
+                        <td>0.1920</td>
+                        <td>0.1004</td>
+                        <td>0.8256</td>
+                        <td>0.00</td>
+                        <td>1.43</td>
+                    </tr>
+                
+                    <tr>
+                        <td>A* Search</td>
+                        <td>0.1760</td>
+                        <td>0.0310</td>
+                        <td>0.1760</td>
+                        <td>0.0527</td>
+                        <td>0.1940</td>
+                        <td>0.00</td>
+                        <td>1.28</td>
+                    </tr>
+                
                 </table>
                 
                 <div class="chart-container">
@@ -40,6 +95,36 @@
                 
                 <h2>Model Detayları</h2>
             
+                <div class="model-section">
+                    <h3>Decision Tree</h3>
+                    <p>Confusion Matrix:</p>
+                    <img src="../models/decision_tree_confusion_matrix.png" alt="Decision Tree Confusion Matrix" style="width:100%; max-width:600px;">
+                </div>
+                
+                <div class="model-section">
+                    <h3>KNN</h3>
+                    <p>Confusion Matrix:</p>
+                    <img src="../models/knn_confusion_matrix.png" alt="KNN Confusion Matrix" style="width:100%; max-width:600px;">
+                </div>
+                
+                <div class="model-section">
+                    <h3>IDDFS</h3>
+                    <p>Confusion Matrix:</p>
+                    <img src="../models/iddfs_confusion_matrix.png" alt="IDDFS Confusion Matrix" style="width:100%; max-width:600px;">
+                </div>
+                
+                <div class="model-section">
+                    <h3>Genetic Algorithm</h3>
+                    <p>Confusion Matrix:</p>
+                    <img src="../models/genetic_algorithm_confusion_matrix.png" alt="Genetic Algorithm Confusion Matrix" style="width:100%; max-width:600px;">
+                </div>
+                
+                <div class="model-section">
+                    <h3>A* Search</h3>
+                    <p>Confusion Matrix:</p>
+                    <img src="../models/a*_search_confusion_matrix.png" alt="A* Search Confusion Matrix" style="width:100%; max-width:600px;">
+                </div>
+                
             </body>
             </html>
             

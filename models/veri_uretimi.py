@@ -8,48 +8,53 @@ def generate_vacation_data(n_samples=5000):
     # Destinasyon bilgileri
     destinations = {
         'Antalya': {
-            'min_hotel_price': 800,
-            'max_hotel_price': 3000,
-            'min_flight_price': 800,
-            'max_flight_price': 2500,
+            'min_hotel_price': 1500,
+            'max_hotel_price': 5000,
+            'min_flight_price': 1200,
+            'max_flight_price': 3500,
             'peak_seasons': ['Yaz'],
-            'activities': ['Plaj', 'Kültür', 'Doğa'],
+            'unsuitable_seasons': ['Kış'],  # Uygun olmayan mevsimler
+            'activities': ['Plaj', 'Deniz', 'Doğa'],
             'avg_satisfaction': 4.5
         },
         'Bodrum': {
-            'min_hotel_price': 1000,
-            'max_hotel_price': 4000,
-            'min_flight_price': 900,
-            'max_flight_price': 2800,
+            'min_hotel_price': 2000,
+            'max_hotel_price': 6000,
+            'min_flight_price': 1300,
+            'max_flight_price': 4000,
             'peak_seasons': ['Yaz'],
-            'activities': ['Plaj', 'Kültür'],
+            'unsuitable_seasons': ['Kış'],  # Uygun olmayan mevsimler
+            'activities': ['Plaj', 'Deniz'],
             'avg_satisfaction': 4.4
         },
         'Uludağ': {
-            'min_hotel_price': 1200,
-            'max_hotel_price': 3500,
-            'min_flight_price': 600,
-            'max_flight_price': 2000,
+            'min_hotel_price': 2000,
+            'max_hotel_price': 4500,
+            'min_flight_price': 800,
+            'max_flight_price': 2500,
             'peak_seasons': ['Kış'],
+            'unsuitable_seasons': ['Yaz'],  # Uygun olmayan mevsimler
             'activities': ['Kayak', 'Doğa'],
             'avg_satisfaction': 4.3
         },
         'Kapadokya': {
-            'min_hotel_price': 700,
-            'max_hotel_price': 2500,
-            'min_flight_price': 700,
-            'max_flight_price': 2200,
+            'min_hotel_price': 1200,
+            'max_hotel_price': 3500,
+            'min_flight_price': 1000,
+            'max_flight_price': 3000,
             'peak_seasons': ['İlkbahar', 'Sonbahar'],
-            'activities': ['Kültür', 'Doğa'],
+            'activities': ['Kültür', 'Doğa', 'Balon'],
+            'unsuitable_seasons': [],  # Her mevsim ziyaret edilebilir
             'avg_satisfaction': 4.7
         },
         'Sarıkamış': {
-            'min_hotel_price': 600,
-            'max_hotel_price': 2000,
-            'min_flight_price': 1000,
-            'max_flight_price': 3000,
+            'min_hotel_price': 1500,
+            'max_hotel_price': 3000,
+            'min_flight_price': 1500,
+            'max_flight_price': 4000,
             'peak_seasons': ['Kış'],
             'activities': ['Kayak', 'Doğa'],
+            'unsuitable_seasons': ['Yaz'],  # Yazın kayak yapılamaz
             'avg_satisfaction': 4.2
         }
     }
@@ -63,6 +68,18 @@ def generate_vacation_data(n_samples=5000):
         
         # Sezon seç
         season = np.random.choice(['Yaz', 'Kış', 'İlkbahar', 'Sonbahar'])
+
+        # Eğer seçilen sezon uygun değilse, başka bir destinasyon seç
+        if season in dest_info.get('unsuitable_seasons', []):
+            alternative_destinations = [
+                d for d in destinations.keys() 
+                if d != destination and season not in destinations[d].get('unsuitable_seasons', [])
+            ]
+            
+            if alternative_destinations:
+                destination = np.random.choice(alternative_destinations)
+                dest_info = destinations[destination]
+        
         is_peak_season = season in dest_info['peak_seasons']
         
         # Aktivite seç

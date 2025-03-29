@@ -3,7 +3,7 @@
     <header>
       <div class="logo-container">
         <div class="logo">
-          <span class="logo-text">TatilAI</span>
+          <span class="logo-text">Taitil Sepeti</span>
         </div>
       </div>
     </header>
@@ -17,7 +17,7 @@
     </main>
     
     <footer>
-      <p>&copy; {{ new Date().getFullYear() }} TatilAI - Yapay Zeka Destekli Tatil Öneri Sistemi</p>
+      <p>&copy; {{ new Date().getFullYear() }} Taitil Sepeti - Yapay Zeka Destekli Tatil Öneri Sistemi</p>
     </footer>
   </div>
 </template>

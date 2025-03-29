@@ -114,8 +114,17 @@ class DecisionTreeVacationRecommender:
         
         logger.info("Karar Ağacı model eğitimi tamamlandı")
     
-    def predict(self, user_preferences):
-        """Kullanıcı tercihleri için öneri yap"""
+    def predict(self, user_preferences, top_n=5):
+        """
+        Kullanıcı tercihlerine göre tatil önerisi yap
+        
+        Args:
+            user_preferences (dict): Kullanıcı tercihleri
+            top_n (int): Döndürülecek öneri sayısı
+            
+        Returns:
+            list: En yüksek skorlu top_n tatil önerisi
+        """
         if self.dt_model is None:
             logger.error("Model eğitilmemiş!")
             return None
@@ -126,7 +135,10 @@ class DecisionTreeVacationRecommender:
             
             # Kategorik değişkenler için encoding
             for col in self.label_encoders:
-                if col in user_preferences:
+                if col == 'destination':
+                    # Destination için özel işlem - tahmin yaparken gerekmez
+                    continue
+                elif col in user_preferences:
                     features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
                 else:
                     logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
@@ -175,65 +187,6 @@ class DecisionTreeVacationRecommender:
             probabilities = self.dt_model.predict_proba(X_pred)[0]
             confidence = max(probabilities)
             
-            return {'destination': destination, 'confidence': float(confidence)}
-        
-        except Exception as e:
-            logger.error(f"Tahmin hatası: {str(e)}")
-            return None
-    
-    def predict_top_n(self, user_preferences, top_n=5):
-        """
-        Kullanıcı tercihlerine göre en yüksek güvenilirlik skoruna sahip top_n tatil önerisini döndürür.
-        
-        Args:
-            user_preferences (dict): Kullanıcı tercihleri
-            top_n (int): Döndürülecek öneri sayısı
-            
-        Returns:
-            list: En yüksek skorlu top_n tatil önerisi
-        """
-        if self.dt_model is None:
-            logger.error("Model eğitilmemiş!")
-            return []
-        
-        try:
-            # Kullanıcı tercihlerini ön işle
-            features = {}
-            
-            # Kategorik değişkenler için encoding
-            season = user_preferences.get('season')
-            preferred_activity = user_preferences.get('preferred_activity')
-            destination = user_preferences.get('destination', None)
-            
-            if season and 'season' in self.label_encoders:
-                features['season'] = self.label_encoders['season'].transform([str(season)])[0]
-            else:
-                logger.warning(f"season kullanıcı tercihlerinde bulunamadı veya label encoder yok!")
-                return []
-                
-            if preferred_activity and 'preferred_activity' in self.label_encoders:
-                features['preferred_activity'] = self.label_encoders['preferred_activity'].transform([str(preferred_activity)])[0]
-            else:
-                logger.warning(f"preferred_activity kullanıcı tercihlerinde bulunamadı veya label encoder yok!")
-                return []
-            
-            # Destination belirtilmişse ekle, belirtilmemişse tüm destinasyonlar için tahmin yapacağız
-            if destination and 'destination' in self.label_encoders:
-                features['destination'] = self.label_encoders['destination'].transform([str(destination)])[0]
-            
-            # Sayısal değişkenler
-            numerical_data = {}
-            for col in ['budget', 'duration']:
-                if col in user_preferences:
-                    numerical_data[col] = user_preferences[col]
-                else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
-                    return []
-            
-            # Olmayan değerleri tahmin et (value_score ve user_satisfaction)
-            numerical_data['value_score'] = 3.5  # Ortalama bir değer
-            numerical_data['user_satisfaction'] = 4.0  # Ortalama bir değer
-            
             # Tüm destinasyonlar için tahmin yap
             all_destinations = self.label_encoders['destination'].classes_
             recommendations = []
@@ -281,8 +234,8 @@ class DecisionTreeVacationRecommender:
                         'destination': dest,
                         'confidence': float(confidence),
                         'algorithm_confidence': float(confidence),
-                        'season': season,
-                        'activity': preferred_activity,
+                        'season': user_preferences.get('season'),
+                        'activity': user_preferences.get('preferred_activity'),
                         'costs': costs
                     })
             
@@ -292,7 +245,20 @@ class DecisionTreeVacationRecommender:
         
         except Exception as e:
             logger.error(f"Tahmin hatası: {str(e)}")
-            return []
+            return None
+    
+    def predict_top_n(self, user_preferences, top_n=5):
+        """
+        Kullanıcı tercihlerine göre en yüksek güvenilirlik skoruna sahip top_n tatil önerisini döndürür.
+        
+        Args:
+            user_preferences (dict): Kullanıcı tercihleri
+            top_n (int): Döndürülecek öneri sayısı
+            
+        Returns:
+            list: En yüksek skorlu top_n tatil önerisi
+        """
+        return self.predict(user_preferences, top_n)
     
     def calculate_costs(self, destination, duration):
         """

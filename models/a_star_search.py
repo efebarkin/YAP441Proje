@@ -21,7 +21,7 @@ class AStarVacationRecommender:
         self.destination_profiles = {}
         self.feature_weights = None  # Özellik ağırlıkları
         
-    def train(self, df):
+    def train(self, df, iterations=100, learning_rate=0.01):
         """A* arama algoritması tabanlı tatil önerici modeli eğit"""
         logger.info("A* tabanlı model eğitimi başlıyor...")
         
@@ -69,7 +69,7 @@ class AStarVacationRecommender:
                 self.destination_profiles[destination_idx] = destination_profile
         
         # A* için özellik ağırlıklarını öğren
-        self.feature_weights = self._learn_feature_weights(X_train, y_train)
+        self.feature_weights = self._learn_feature_weights(X_train, y_train, iterations=iterations, learning_rate=learning_rate)
         
         # Model değerlendirme
         start_time = time.time()
@@ -263,28 +263,50 @@ class AStarVacationRecommender:
         
         # Kategorik özellikler için tam eşleşme ödülü
         for i in categorical_indices:
-            if instance[i] == destination_profile[i]:
-                # Tam eşleşme için bonus
-                similarity += 2.0 * weights[i]
-            else:
-                # Eşleşmeme için daha az ceza
-                diff = abs(instance[i] - destination_profile[i])
-                similarity -= diff * weights[i] * 0.5
+            # Tür kontrolü ve dönüşümü
+            try:
+                instance_val = float(instance[i]) if isinstance(instance[i], (int, float, np.number)) else instance[i]
+                profile_val = float(destination_profile[i]) if isinstance(destination_profile[i], (int, float, np.number)) else destination_profile[i]
+                
+                if instance_val == profile_val:
+                    # Tam eşleşme için bonus
+                    similarity += 2.0 * weights[i]
+                else:
+                    # Sayısal değerler için
+                    if isinstance(instance_val, (int, float)) and isinstance(profile_val, (int, float)):
+                        diff = abs(instance_val - profile_val)
+                        similarity -= diff * weights[i] * 0.5
+                    else:
+                        # Kategorik değerler için eşleşmeme durumunda sabit ceza
+                        similarity -= 0.5 * weights[i]
+            except Exception as e:
+                # Hata durumunda log ve devam et
+                logger.warning(f"Özellik karşılaştırma hatası (indeks {i}): {str(e)}")
+                continue
         
         # Sayısal özellikler için mesafe tabanlı benzerlik
         for i in numerical_indices:
-            # Mesafe hesapla
-            diff = abs(instance[i] - destination_profile[i])
-            
-            # Normalize edilmiş veri için uygun bir eşik
-            threshold = 0.5
-            
-            # Eşik altındaki farklar için daha az ceza
-            if diff < threshold:
-                similarity -= (diff**2) * weights[i]
-            else:
-                # Eşik üstü için lineer ceza - aşırı cezalandırmayı önle
-                similarity -= (threshold**2 + (diff - threshold)) * weights[i]
+            try:
+                # Tür kontrolü ve dönüşümü
+                instance_val = float(instance[i]) if isinstance(instance[i], (int, float, np.number)) else 0.0
+                profile_val = float(destination_profile[i]) if isinstance(destination_profile[i], (int, float, np.number)) else 0.0
+                
+                # Mesafe hesapla
+                diff = abs(instance_val - profile_val)
+                
+                # Normalize edilmiş veri için uygun bir eşik
+                threshold = 0.5
+                
+                # Eşik altındaki farklar için daha az ceza
+                if diff < threshold:
+                    similarity -= (diff**2) * weights[i]
+                else:
+                    # Eşik üstü için lineer ceza - aşırı cezalandırmayı önle
+                    similarity -= (threshold**2 + (diff - threshold)) * weights[i]
+            except Exception as e:
+                # Hata durumunda log ve devam et
+                logger.warning(f"Sayısal özellik karşılaştırma hatası (indeks {i}): {str(e)}")
+                continue
         
         # Bonus faktörü ekle - daha iyimser heuristic için
         optimism_factor = 1.2
@@ -293,54 +315,65 @@ class AStarVacationRecommender:
         
         return similarity
     
-    def predict(self, user_preferences):
-        """Kullanıcı tercihleri için öneri yap"""
+    def predict(self, user_preferences, top_n=5):
+        """
+        Kullanıcı tercihlerine göre tatil destinasyonu öner
+        """
         try:
-            # Kullanıcı tercihlerini ön işle
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            # Kullanıcı tercihlerini işle
             features = {}
-            
-            # Kategorik değişkenler için encoding
-            for col in self.label_encoders:
-                if col == 'destination':
-                    # Destination tahmin edilecek değer olduğu için kullanıcı tercihlerinde olmamalı
-                    # Varsayılan olarak ilk destinasyonu kullan (sadece placeholder olarak)
-                    features[col] = 0
-                elif col in user_preferences:
-                    features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
-                else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı! Varsayılan değer kullanılıyor.")
-                    # Varsayılan değerler kullan
-                    if col == 'season':
-                        features[col] = self.label_encoders[col].transform(['Yaz'])[0]
-                    elif col == 'preferred_activity':
-                        features[col] = self.label_encoders[col].transform(['Plaj'])[0]
-                    else:
-                        features[col] = 0
-            
-            # Sayısal değişkenler
             numerical_data = {}
-            for col in ['budget', 'duration']:
-                if col in user_preferences:
-                    numerical_data[col] = user_preferences[col]
+            
+            # Sezon
+            if 'season' in user_preferences:
+                season = user_preferences['season']
+                if season in self.label_encoders['season'].classes_:
+                    features['season'] = self.label_encoders['season'].transform([season])[0]
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı! Varsayılan değer kullanılıyor.")
-                    # Varsayılan değerler kullan
-                    if col == 'budget':
-                        numerical_data[col] = 10000
-                    elif col == 'duration':
-                        numerical_data[col] = 7
+                    logger.warning(f"Bilinmeyen sezon: {season}")
+                    features['season'] = 0  # Varsayılan değer
+            else:
+                # Sezon belirtilmemişse varsayılan değer kullan
+                features['season'] = 0
             
-            # Olmayan değerleri tahmin et (value_score ve user_satisfaction)
-            numerical_data['value_score'] = 3.5  # Ortalama bir değer
-            numerical_data['user_satisfaction'] = 4.0  # Ortalama bir değer
+            # Aktivite
+            if 'preferred_activity' in user_preferences:
+                activity = user_preferences['preferred_activity']
+                if activity in self.label_encoders['preferred_activity'].classes_:
+                    features['preferred_activity'] = self.label_encoders['preferred_activity'].transform([activity])[0]
+                else:
+                    logger.warning(f"Bilinmeyen aktivite: {activity}")
+                    features['preferred_activity'] = 0  # Varsayılan değer
+            else:
+                # Aktivite belirtilmemişse varsayılan değer kullan
+                features['preferred_activity'] = 0
             
-            # Sayısal verileri ölçeklendir
-            numerical_features = np.array([[
-                numerical_data['budget'],
-                numerical_data['duration'],
-                numerical_data['value_score'],
-                numerical_data['user_satisfaction']
-            ]])
+            # Bütçe
+            if 'budget' in user_preferences:
+                numerical_data['budget'] = float(user_preferences['budget'])
+            else:
+                numerical_data['budget'] = 5000.0  # Varsayılan değer
+            
+            # Süre
+            if 'duration' in user_preferences:
+                numerical_data['duration'] = float(user_preferences['duration'])
+            else:
+                numerical_data['duration'] = 7.0  # Varsayılan değer
+            
+            # Değer skoru ve kullanıcı memnuniyeti (varsayılan değerler)
+            numerical_data['value_score'] = 0.7
+            numerical_data['user_satisfaction'] = 0.8
+            
+            # Sayısal özellikleri ölçeklendir
+            numerical_features = pd.DataFrame({
+                'budget': [numerical_data['budget']],
+                'duration': [numerical_data['duration']],
+                'value_score': [numerical_data['value_score']],
+                'user_satisfaction': [numerical_data['user_satisfaction']]
+            })
             scaled_numerical = self.scaler.transform(numerical_features)
             
             # Tüm özellikleri birleştir
@@ -357,35 +390,194 @@ class AStarVacationRecommender:
                 if col in feature_indices:
                     instance[feature_indices[col]] = scaled_numerical[0, i]
             
+            # Destination değerini kullanıcı tercihlerinden çıkar
+            # Eğer destination varsa, bu değeri kullanma
+            if 'destination' in user_preferences:
+                logger.info("Tahmin için kullanıcı tercihlerinden destination değeri çıkarıldı")
+            
             # A* ile tahmin yap
-            destination_idx = self._predict_with_astar(instance)
+            results = []
             
-            if destination_idx is None:
-                logger.warning("A* algoritması bir destinasyon önerisi bulamadı.")
-                return None
+            # Destination encodings ve destination profiles kontrolü
+            if not hasattr(self, 'destination_encodings') or not self.destination_encodings:
+                logger.warning("Destinasyon kodlamaları bulunamadı, yeniden oluşturuluyor...")
+                if 'destination' in self.label_encoders:
+                    self.destination_encodings = {}
+                    for i, dest in enumerate(self.label_encoders['destination'].classes_):
+                        self.destination_encodings[dest] = i
+                else:
+                    logger.error("Destinasyon label encoder bulunamadı!")
+                    return self._fallback_recommendations(user_preferences, numerical_data)
             
-            # Güven değeri hesapla (sezgisel)
-            best_profile = self.destination_profiles[destination_idx]
-            raw_score = self._weighted_heuristic(instance, best_profile, self.feature_weights)
-            # Normalize et
-            confidence = 1.0 / (1.0 + np.exp(-raw_score * 0.5))
+            if not hasattr(self, 'destinations') or not self.destinations:
+                logger.warning("Destinasyonlar bulunamadı, yeniden oluşturuluyor...")
+                if 'destination' in self.label_encoders:
+                    self.destinations = list(self.label_encoders['destination'].classes_)
+                else:
+                    logger.error("Destinasyon label encoder bulunamadı!")
+                    return self._fallback_recommendations(user_preferences, numerical_data)
             
-            # Destinasyon adını bul
-            destination_name = None
-            for name, idx in self.destination_encodings.items():
-                if idx == destination_idx:
-                    destination_name = name
-                    break
+            if not self.destination_profiles:
+                logger.warning("Destinasyon profilleri boş! Varsayılan öneriler döndürülüyor.")
+                return self._fallback_recommendations(user_preferences, numerical_data)
             
-            return {
-                'destination': destination_idx,
-                'destination_name': destination_name,
-                'confidence': float(confidence)
-            }
+            # Tüm destinasyonları değerlendir ve en iyi top_n'i seç
+            all_destinations = []
+            
+            # destination_profiles içindeki anahtarları kontrol et
+            if len(self.destination_profiles) > 0:
+                # Örnek bir anahtar al
+                sample_key = next(iter(self.destination_profiles.keys()))
+                # Debug bilgisini kaldırdık
+                # logger.info(f"Örnek destination_profiles anahtarı: {sample_key}, tipi: {type(sample_key)}")
+            
+            # destination_profiles'ı numerik indeksli bir yapıya dönüştür
+            numeric_profiles = {}
+            for key, profile in self.destination_profiles.items():
+                # Eğer key bir string ise, destinations listesinde ara
+                if isinstance(key, str):
+                    if key in self.destinations:
+                        idx = self.destinations.index(key)
+                        numeric_profiles[idx] = profile
+                    else:
+                        # Eğer destinations listesinde yoksa, destination_encodings'de ara
+                        found = False
+                        for dest, idx in self.destination_encodings.items():
+                            if dest == key:
+                                numeric_profiles[idx] = profile
+                                found = True
+                                break
+                        
+                        if not found:
+                            try:
+                                # Son çare olarak int'e dönüştürmeyi dene
+                                idx = int(key)
+                                numeric_profiles[idx] = profile
+                            except (ValueError, TypeError):
+                                logger.warning(f"Destinasyon profili için geçerli indeks bulunamadı: {key}")
+                else:
+                    # Zaten numerik bir key ise doğrudan kullan
+                    numeric_profiles[key] = profile
+            
+            # Eğer numeric_profiles boşsa, orijinal profiles'ı kullan
+            if not numeric_profiles:
+                logger.warning("Numerik profiller oluşturulamadı, orijinal profiller kullanılıyor.")
+                numeric_profiles = self.destination_profiles
+            
+            for dest_idx, profile in numeric_profiles.items():
+                try:
+                    # Güven değeri hesapla
+                    raw_score = self._weighted_heuristic(instance, profile, self.feature_weights)
+                    # Normalize et
+                    confidence = 1.0 / (1.0 + np.exp(-raw_score * 0.5))
+                    
+                    # Destinasyon adını bul
+                    destination_name = None
+                    
+                    # Önce destinations listesinde indeks ile ara
+                    try:
+                        idx = int(dest_idx) if not isinstance(dest_idx, (int, np.integer)) else dest_idx
+                        if 0 <= idx < len(self.destinations):
+                            destination_name = self.destinations[idx]
+                    except (ValueError, TypeError):
+                        pass
+                    
+                    # Bulunamazsa destination_encodings'de ara
+                    if not destination_name:
+                        for name, idx in self.destination_encodings.items():
+                            try:
+                                dest_idx_int = int(dest_idx) if not isinstance(dest_idx, (int, np.integer)) else dest_idx
+                                idx_int = int(idx) if not isinstance(idx, (int, np.integer)) else idx
+                                
+                                if idx_int == dest_idx_int:
+                                    destination_name = name
+                                    break
+                            except (ValueError, TypeError):
+                                # Eğer string olarak eşleşiyorsa
+                                if str(idx) == str(dest_idx):
+                                    destination_name = name
+                                    break
+                    
+                    # Hala bulunamadıysa ve dest_idx bir string ise, doğrudan onu kullan
+                    if not destination_name and isinstance(dest_idx, str):
+                        # Eğer dest_idx destinations listesinde varsa
+                        if dest_idx in self.destinations:
+                            destination_name = dest_idx
+                    
+                    # Hala bulunamazsa, varsayılan bir isim kullan
+                    if not destination_name:
+                        destination_name = f"Destination_{dest_idx}"
+                        logger.warning(f"Destinasyon adı bulunamadı, varsayılan değer kullanılıyor: {destination_name}")
+                    
+                    all_destinations.append({
+                        'destination': destination_name,
+                        'confidence': float(confidence),
+                        'dest_idx': dest_idx
+                    })
+                except Exception as e:
+                    logger.warning(f"Destinasyon {dest_idx} değerlendirme hatası: {str(e)}")
+                    continue
+            
+            # Güven skoruna göre sırala
+            all_destinations.sort(key=lambda x: x['confidence'], reverse=True)
+            
+            # En iyi top_n destinasyonu seç
+            for i in range(min(top_n, len(all_destinations))):
+                dest = all_destinations[i]
+                result = {
+                    'destination': dest['destination'],
+                    'season': user_preferences.get('season', 'Bilinmiyor'),
+                    'preferred_activity': user_preferences.get('preferred_activity', 'Bilinmiyor'),
+                    'budget': numerical_data['budget'],
+                    'duration': numerical_data['duration'],
+                    'confidence': dest['confidence'],
+                    'algorithm': 'a_star',
+                    'reason': f"A* algoritması bu destinasyonu {dest['confidence']:.2f} güven skoru ile önerdi."
+                }
+                results.append(result)
+            
+            if not results:
+                logger.warning("A* algoritması bir destinasyon önerisi bulamadı. Varsayılan öneriler döndürülüyor.")
+                return self._fallback_recommendations(user_preferences, numerical_data)
+                
+            return results
         
         except Exception as e:
             logger.error(f"Tahmin hatası: {str(e)}")
-            return None
+            import traceback
+            logger.error(traceback.format_exc())
+            return self._fallback_recommendations(user_preferences, numerical_data)
+    
+    def _fallback_recommendations(self, user_preferences, numerical_data, count=5):
+        """Herhangi bir hata durumunda varsayılan öneriler döndür"""
+        results = []
+        
+        # Eğer destinasyonlar mevcutsa, onları kullan
+        available_destinations = []
+        if hasattr(self, 'destinations') and self.destinations:
+            available_destinations = self.destinations
+        elif 'destination' in self.label_encoders:
+            available_destinations = list(self.label_encoders['destination'].classes_)
+        
+        # Eğer hiç destinasyon yoksa, varsayılan destinasyonlar oluştur
+        if not available_destinations:
+            available_destinations = ["Antalya", "İstanbul", "Bodrum", "Kapadokya", "Fethiye"]
+        
+        # En popüler count kadar destinasyonu seç
+        for i in range(min(count, len(available_destinations))):
+            confidence = 0.9 - (i * 0.1)  # Azalan güven skoru
+            results.append({
+                'destination': available_destinations[i],
+                'season': user_preferences.get('season', 'Bilinmiyor'),
+                'preferred_activity': user_preferences.get('preferred_activity', 'Bilinmiyor'),
+                'budget': numerical_data.get('budget', 5000.0),
+                'duration': numerical_data.get('duration', 7.0),
+                'confidence': max(0.5, confidence),  # En az 0.5 güven skoru
+                'algorithm': 'a_star_fallback',
+                'reason': "Destinasyon değerlendirmesi sırasında hata oluştu, popüler bir destinasyon öneriliyor."
+            })
+        
+        return results
     
     def save_model(self):
         """Modeli kaydet"""

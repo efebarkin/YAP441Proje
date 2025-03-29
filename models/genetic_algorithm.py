@@ -28,7 +28,7 @@ class GeneticVacationRecommender:
         
         # Gereksiz sütunları kaldır
         columns_to_drop = ['user_id', 'hotel_price_per_night', 'flight_cost', 'total_cost']
-        df = df.drop(columns_to_drop, axis=1)
+        df = df.drop(columns=[col for col in columns_to_drop if col in df.columns], axis=1)
         
         # Kategorik değişkenleri encode et
         categorical_features = ['season', 'preferred_activity', 'destination']
@@ -50,17 +50,12 @@ class GeneticVacationRecommender:
         df[numerical_features] = self.scaler.fit_transform(df[numerical_features])
         
         # Feature'ları ve target'ı ayır
-        self.feature_columns = ['season', 'preferred_activity', 'destination', 'budget', 'duration', 'value_score', 'user_satisfaction']
+        self.feature_columns = ['season', 'preferred_activity', 'budget', 'duration', 'value_score', 'user_satisfaction']
         X = df[self.feature_columns].values
         
         # Hedef değişkeni sayısal hale getir
-        le_target = LabelEncoder()
-        y = le_target.fit_transform(df['recommended_vacation'].astype(str))
-        self.label_encoders['recommended_vacation'] = le_target
-        
-        # Benzersiz hedef değerlerini al
-        unique_destinations = np.unique(y)
-        self.num_classes = len(unique_destinations)
+        y = df['destination'].values
+        self.num_classes = len(np.unique(y))
         
         # Train-test split
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -91,6 +86,8 @@ class GeneticVacationRecommender:
         # Genetik Algoritma: Jenerasyonlar boyunca evolve et
         stagnation_count = 0
         last_best_fitness = 0
+        best_fitness_overall = 0
+        early_stopping_patience = 10  # Erken durdurma için sabır parametresi
         
         for generation in range(generations):
             # Her bireyin uygunluğunu hesapla
@@ -99,89 +96,83 @@ class GeneticVacationRecommender:
                 fitness = self._calculate_fitness(individual, X_train, y_train)
                 fitness_scores.append(fitness)
             
-            # En iyi bireyi bul ve kaydet
+            # En iyi bireyi bul
             best_idx = np.argmax(fitness_scores)
+            best_individual = population[best_idx]
             best_fitness = fitness_scores[best_idx]
-            self.best_individual = population[best_idx]
+            
+            # Fitness geçmişini kaydet
             self.fitness_history.append(best_fitness)
             
-            # Log ilerleme
-            if (generation + 1) % 5 == 0 or generation == 0:
-                logger.info(f"Jenerasyon {generation + 1}/{generations}, En İyi Uygunluk: {best_fitness:.4f}")
+            # En iyi bireyi sakla
+            if best_fitness > best_fitness_overall:
+                self.best_individual = best_individual.copy()
+                best_fitness_overall = best_fitness
+                stagnation_count = 0
+            else:
+                stagnation_count += 1
+            
+            # Her 10 jenerasyonda bir ilerleme raporu
+            if generation % 10 == 0 or generation == generations - 1:
+                logger.info(f"Jenerasyon {generation+1}/{generations}, En İyi Uygunluk: {best_fitness:.4f}")
             
             # Erken durdurma kontrolü
-            if abs(best_fitness - last_best_fitness) < 0.0001:
-                stagnation_count += 1
-            else:
-                stagnation_count = 0
-            
-            last_best_fitness = best_fitness
-            
-            # 10 jenerasyon boyunca ilerleme yoksa dur
-            if stagnation_count >= 10 and best_fitness > 0.05:  # Minimum eşik değeri artırıldı
-                logger.info(f"Erken durdurma: 10 jenerasyon boyunca ilerleme yok. Jenerasyon {generation + 1}/{generations}")
+            if stagnation_count >= early_stopping_patience:
+                logger.info(f"Jenerasyon {generation+1}/{generations} - Erken durdurma (En iyi uygunluk: {best_fitness_overall:.4f})")
                 break
-            
-            # Adaptif mutasyon oranı: Popülasyon çeşitliliği azaldıkça mutasyon oranını artır
-            population_diversity = np.std([np.mean(ind) for ind in population])
-            adaptive_mutation_rate = mutation_rate * (1.0 + (0.5 / (population_diversity + 0.1)))
             
             # Yeni popülasyon oluştur
             new_population = []
             
-            # Seçkincilik: En iyi bireyi direkt olarak bir sonraki jenerasyona aktar
-            new_population.append(self.best_individual)
+            # Elitizm: En iyi bireyi doğrudan yeni popülasyona aktar
+            new_population.append(self.best_individual.copy())
             
-            # Geriye kalan bireyleri turnuva seçimi, çaprazlama ve mutasyon ile oluştur
+            # Yeni popülasyonu doldur
             while len(new_population) < population_size:
-                # Turnuva seçimi
+                # Turnuva seçimi ile ebeveynleri seç
                 parent1 = self._tournament_selection(population, fitness_scores, tournament_size)
                 parent2 = self._tournament_selection(population, fitness_scores, tournament_size)
                 
                 # Çaprazlama
-                child = self._crossover(parent1, parent2)
+                if random.random() < 0.8:  # Çaprazlama olasılığı
+                    child = self._crossover(parent1, parent2)
+                else:
+                    child = parent1.copy()
                 
                 # Mutasyon
-                if random.random() < adaptive_mutation_rate:
-                    child = self._mutate(child)
+                child = self._mutate(child, mutation_rate)
                 
                 new_population.append(child)
             
             # Yeni popülasyonu güncelle
             population = new_population
         
-        # En iyi bireyi model olarak kaydet
-        self.feature_weights = self.best_individual
+        # Final modeli değerlendir
+        self.model = self.best_individual
+        self.feature_weights = self.best_individual  # Ensure both variables point to the same data
         
         # Test seti üzerinde değerlendir
-        y_pred = self.predict_batch(X_test)
+        y_pred = self._predict_batch(X_test, self.model)
+        accuracy = accuracy_score(y_test, y_pred)
+        logger.info(f"Test Seti Doğruluk: {accuracy:.4f}")
         
-        try:
-            accuracy = accuracy_score(y_test, y_pred)
-            logger.info(f"\nTest Seti Doğruluk Oranı: {accuracy:.4f}")
-            
-            logger.info("\nConfusion Matrix:")
-            logger.info(f"\n{confusion_matrix(y_test, y_pred)}")
-            
-            logger.info("\nClassification Report:")
-            logger.info(f"\n{classification_report(y_test, y_pred)}")
-        except Exception as e:
-            logger.error(f"Değerlendirme hatası: {str(e)}")
+        # Confusion matrix ve classification report
+        logger.info("\nConfusion Matrix:")
+        logger.info(f"\n{confusion_matrix(y_test, y_pred)}")
+        logger.info("\nClassification Report:")
+        logger.info(f"\n{classification_report(y_test, y_pred)}")
         
-        # Grafik oluştur: Uygunluk Değeri vs Jenerasyon
-        try:
-            plt.figure(figsize=(10, 6))
-            plt.plot(range(1, len(self.fitness_history) + 1), self.fitness_history, marker='o')
-            plt.title('Genetik Algoritma Eğitim İlerlemesi')
-            plt.xlabel('Jenerasyon')
-            plt.ylabel('En İyi Uygunluk Değeri')
-            plt.grid(True)
-            plt.savefig('models/genetic_algorithm_fitness.png', dpi=300, bbox_inches='tight')
-            logger.info("Genetik algoritma eğitim grafiği kaydedildi: models/genetic_algorithm_fitness.png")
-        except Exception as e:
-            logger.warning(f"Grafik oluşturma hatası: {str(e)}")
+        # Fitness geçmişini görselleştir
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.fitness_history)
+        plt.title('Genetik Algoritma Eğitim İlerlemesi')
+        plt.xlabel('Jenerasyon')
+        plt.ylabel('En İyi Uygunluk')
+        plt.grid(True)
+        plt.savefig('models/genetic_fitness_history.png')
         
         logger.info("Genetik Algoritma model eğitimi tamamlandı")
+        return self
 
     def _calculate_fitness(self, individual, X, y):
         y_pred = []
@@ -212,7 +203,7 @@ class GeneticVacationRecommender:
         
         # Eğer fitness çok düşükse, minimum bir değer döndür
         return max(0.0001, final_fitness)  # Minimum pozitif değer döndür
-    
+
     def _tournament_selection(self, population, fitness_scores, tournament_size):
         """Turnuva seçimi ile ebeveyn seç"""
         # Rastgele bireyler seç
@@ -222,7 +213,7 @@ class GeneticVacationRecommender:
         # En iyi uygunluk değerine sahip bireyi döndür
         winner_idx = tournament_indices[np.argmax(tournament_fitness)]
         return population[winner_idx]
-    
+
     def _crossover(self, parent1, parent2):
         """İki ebeveynden yeni birey oluştur (çaprazlama)"""
         # Her özellik için rastgele ebeveynden gen al
@@ -234,8 +225,8 @@ class GeneticVacationRecommender:
                 else:
                     child[i, j] = parent2[i, j]
         return child
-    
-    def _mutate(self, individual):
+
+    def _mutate(self, individual, mutation_rate):
         """Bireyde rastgele mutasyonlar gerçekleştir"""
         mutated = individual.copy()
         
@@ -255,13 +246,9 @@ class GeneticVacationRecommender:
             mutated[i, j] = max(-1.0, min(1.0, mutated[i, j]))
         
         return mutated
-    
-    def predict_batch(self, X):
+
+    def _predict_batch(self, X, model):
         """Toplu tahmin yap"""
-        if self.feature_weights is None:
-            logger.error("Model eğitilmemiş!")
-            return None
-        
         y_pred = []
         
         for instance in X:
@@ -270,154 +257,138 @@ class GeneticVacationRecommender:
             for i, feature_val in enumerate(instance):
                 for j in range(self.num_classes):
                     # Özellik değeri ve ağırlığın çarpımını skora ekle
-                    scores[j] += feature_val * self.feature_weights[i, j]
+                    scores[j] += feature_val * model[i, j]
             
             # En yüksek skora sahip sınıfı seç
             predicted_class = np.argmax(scores)
             y_pred.append(predicted_class)
         
         return np.array(y_pred)
-    
-    def predict(self, user_preferences):
-        """Kullanıcı tercihlerine göre tatil önerisi yap"""
-        logger.info("Genetik Algoritma ile tahmin yapılıyor...")
-        
+
+    def predict(self, user_preferences, top_n=5):
+        """Kullanıcı tercihlerine göre destinasyon tahmini yap"""
         try:
-            # Kullanıcı tercihlerini işle
-            processed_preferences = self._process_user_preferences(user_preferences)
+            # Kategorik değişkenler için özellikler
+            features = {}
             
-            # Özellikleri çıkar
-            features = []
-            for col in self.feature_columns:
-                if col in processed_preferences:
-                    features.append(processed_preferences[col])
+            # Sayısal değişkenler için veri
+            numerical_data = {}
+            
+            # Kategorik değişkenleri işle
+            if 'season' in user_preferences:
+                season = str(user_preferences['season'])
+                if 'season' in self.label_encoders and season in self.label_encoders['season'].classes_:
+                    features['season'] = self.label_encoders['season'].transform([season])[0]
                 else:
-                    # Eğer özellik yoksa, varsayılan değer kullan
-                    features.append(0)
+                    logger.warning(f"Bilinmeyen sezon: {season}")
+                    features['season'] = 0  # Varsayılan değer
             
-            features = np.array(features).reshape(1, -1)
+            if 'preferred_activity' in user_preferences:
+                activity = str(user_preferences['preferred_activity'])
+                if 'preferred_activity' in self.label_encoders and activity in self.label_encoders['preferred_activity'].classes_:
+                    features['preferred_activity'] = self.label_encoders['preferred_activity'].transform([activity])[0]
+                else:
+                    logger.warning(f"Bilinmeyen aktivite: {activity}")
+                    features['preferred_activity'] = 0  # Varsayılan değer
             
-            # Her sınıf için bir skor hesapla
-            scores = np.zeros(self.num_classes)
-            for i, feature_val in enumerate(features[0]):
-                for j in range(self.num_classes):
-                    scores[j] += feature_val * self.feature_weights[i, j]
+            # Sayısal değişkenleri işle
+            for col in ['budget', 'duration']:
+                if col in user_preferences:
+                    numerical_data[col] = float(user_preferences[col])
+                else:
+                    # Varsayılan değerler
+                    numerical_data[col] = 5000.0 if col == 'budget' else 7.0
             
-            # En yüksek skora sahip sınıfı seç
-            predicted_class = np.argmax(scores)
+            # Olmayan değerleri tahmin et
+            numerical_data['value_score'] = 3.5  # Ortalama bir değer
+            numerical_data['user_satisfaction'] = 4.0  # Ortalama bir değer
             
-            # Sınıf etiketini çöz
-            if 'recommended_vacation' in self.label_encoders:
-                predicted_destination = self.label_encoders['recommended_vacation'].inverse_transform([predicted_class])[0]
-            else:
-                predicted_destination = f"Destination_{predicted_class}"
+            # Sayısal değişkenleri ölçeklendir
+            numerical_features = pd.DataFrame({
+                'budget': [numerical_data['budget']],
+                'duration': [numerical_data['duration']],
+                'value_score': [numerical_data['value_score']],
+                'user_satisfaction': [numerical_data['user_satisfaction']]
+            })
             
-            # Normalize edilmiş skorları hesapla (güven değerleri olarak)
-            confidence_scores = softmax(scores)
-            algorithm_confidence = confidence_scores[predicted_class]
+            scaled_numerical = self.scaler.transform(numerical_features)
             
-            # Sonucu döndür
-            result = {
-                "destination": predicted_destination,
-                "season": user_preferences.get("season", ""),
-                "activity": user_preferences.get("preferred_activity", ""),
-                "costs": {
-                    "hotel_price": round(random.uniform(500, 3000)),
-                    "flight_cost": round(random.uniform(1000, 5000)),
-                    "total_cost": 0  # Sonra hesaplanacak
-                },
-                "algorithm_confidence": float(algorithm_confidence)
-            }
+            # Özellik vektörünü oluştur
+            instance = np.zeros(len(self.feature_columns))
+            feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
             
-            # Toplam maliyeti hesapla
-            result["costs"]["total_cost"] = result["costs"]["hotel_price"] * user_preferences.get("duration", 7) + result["costs"]["flight_cost"]
+            # Kategorik değişkenleri ekle
+            for col, value in features.items():
+                if col in feature_indices:
+                    instance[feature_indices[col]] = value
             
-            logger.info(f"Genetik Algoritma tahmini: {result}")
-            return result
+            # Sayısal değişkenleri ekle
+            for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
+                if col in feature_indices:
+                    instance[feature_indices[col]] = scaled_numerical[0, i]
+            
+            # Tahmin yap
+            scores = np.dot(instance, self.model)
+            probabilities = softmax(scores)
+            
+            # En yüksek olasılıklı top_n destinasyonu bul
+            top_indices = np.argsort(probabilities)[::-1][:top_n]
+            
+            results = []
+            for idx in top_indices:
+                # Destinations listesi kontrolü
+                if not self.destinations or idx >= len(self.destinations):
+                    # Eğer destinations listesi yoksa veya index geçersizse, label encoder'dan destinasyonları al
+                    if 'destination' in self.label_encoders:
+                        self.destinations = list(self.label_encoders['destination'].classes_)
+                    else:
+                        # Hiçbir şekilde destinasyon bilgisi yoksa, index'i kullan
+                        destination = f"Destination_{idx}"
+                        logger.warning(f"Destinasyon bilgisi bulunamadı, varsayılan değer kullanılıyor: {destination}")
+                
+                # Destinasyon bilgisini al
+                if self.destinations and idx < len(self.destinations):
+                    destination = self.destinations[idx]
+                else:
+                    destination = f"Destination_{idx}"
+                    
+                confidence = float(probabilities[idx])
+                
+                result = {
+                    'destination': destination,
+                    'confidence': confidence,
+                    'reason': f"Bu destinasyon tercihlerinizle {confidence:.2f} oranında uyumlu."
+                }
+                results.append(result)
+            
+            return results
             
         except Exception as e:
-            logger.error(f"Genetik Algoritma tahmin hatası: {str(e)}")
+            logger.error(f"Tahmin hatası: {str(e)}")
             logger.error(traceback.format_exc())
             return None
-    
-    def _process_user_preferences(self, user_preferences):
-        # Kullanıcı tercihlerini ön işle
-        features = {}
-        
-        # Kategorik değişkenler için encoding
-        for col in self.label_encoders:
-            if col in user_preferences:
-                features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
-            else:
-                logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
-                return None
-        
-        # Sayısal değişkenler
-        numerical_data = {}
-        for col in ['budget', 'duration']:
-            if col in user_preferences:
-                numerical_data[col] = user_preferences[col]
-            else:
-                logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
-                return None
-        
-        # Olmayan değerleri tahmin et (value_score ve user_satisfaction)
-        numerical_data['value_score'] = 3.5  # Ortalama bir değer
-        numerical_data['user_satisfaction'] = 4.0  # Ortalama bir değer
-        
-        # Sayısal verileri ölçeklendir
-        numerical_features = np.array([[
-            numerical_data['budget'],
-            numerical_data['duration'],
-            numerical_data['value_score'],
-            numerical_data['user_satisfaction']
-        ]])
-        scaled_numerical = self.scaler.transform(numerical_features)
-        
-        # Tüm özellikleri birleştir
-        instance = np.zeros(len(self.feature_columns))
-        feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
-        
-        # Kategorik değerleri yerleştir
-        for col, value in features.items():
-            if col in feature_indices:
-                instance[feature_indices[col]] = value
-        
-        # Sayısal değerleri yerleştir
-        for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
-            if col in feature_indices:
-                instance[feature_indices[col]] = scaled_numerical[0, i]
-        
-        return instance
-    
+
     def save_model(self):
         """Modeli kaydet"""
-        if self.feature_weights is None:
-            logger.error("Kaydedilecek model yok!")
+        if self.model is None:
+            logger.error("Model eğitilmemiş! Kaydedilecek model yok.")
             return
         
-        # Modeli kaydet
-        joblib.dump(self.feature_weights, 'models/genetic_model.joblib')
-        
-        # Label encoder'ları kaydet
+        # Model parametrelerini kaydet
+        joblib.dump(self.model, 'models/genetic_model.joblib')
         joblib.dump(self.label_encoders, 'models/genetic_label_encoders.joblib')
-        
-        # Scaler'ı kaydet
         joblib.dump(self.scaler, 'models/genetic_scaler.joblib')
-        
-        # Feature kolonlarını kaydet
         joblib.dump(self.feature_columns, 'models/genetic_feature_columns.joblib')
-        
-        # Sınıf sayısını kaydet
+        joblib.dump(self.destinations, 'models/genetic_destinations.joblib')
         joblib.dump(self.num_classes, 'models/genetic_num_classes.joblib')
         
         logger.info("Genetik Algoritma modeli kaydedildi")
-    
+
     def load_model(self):
         """Modeli yükle"""
         try:
             # Modeli yükle
-            self.feature_weights = joblib.load('models/genetic_model.joblib')
+            self.model = joblib.load('models/genetic_model.joblib')
             
             # Label encoder'ları yükle
             self.label_encoders = joblib.load('models/genetic_label_encoders.joblib')
@@ -427,6 +398,9 @@ class GeneticVacationRecommender:
             
             # Feature kolonlarını yükle
             self.feature_columns = joblib.load('models/genetic_feature_columns.joblib')
+            
+            # Destinasyonları yükle
+            self.destinations = joblib.load('models/genetic_destinations.joblib')
             
             # Sınıf sayısını yükle
             self.num_classes = joblib.load('models/genetic_num_classes.joblib')

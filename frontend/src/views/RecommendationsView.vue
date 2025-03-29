@@ -122,10 +122,20 @@ export default {
       }
       
       const rec = recommendations.value[0]
+      console.log('Recommendation object:', rec);
       const algorithmId = rec.algorithm || 'decision_tree'
-      const algorithm = algorithms.value.find(a => a.id === algorithmId)
+      console.log('Algorithm ID:', algorithmId);
       
-      return algorithm ? algorithm.name : 'Karar Ağacı'
+      // Algoritma adları
+      const algorithmNames = {
+        'decision_tree': 'Karar Ağacı',
+        'a_star': 'A* Algoritması',
+        'genetic': 'Genetik Algoritma',
+        'iterative_deepening': 'Iterative Deepening',
+        'knn': 'K-En Yakın Komşu'
+      };
+      
+      return algorithmNames[algorithmId] || 'Karar Ağacı';
     }
     
     const getAlgorithmDescription = () => {
@@ -135,9 +145,17 @@ export default {
       
       const rec = recommendations.value[0]
       const algorithmId = rec.algorithm || 'decision_tree'
-      const algorithm = algorithms.value.find(a => a.id === algorithmId)
       
-      return algorithm ? algorithm.description : 'Basit karar kuralları kullanarak tahmin yapar'
+      // Algoritma açıklamaları
+      const algorithmDescriptions = {
+        'decision_tree': 'Basit karar kuralları kullanarak tahmin yapar, kolay anlaşılır ve yorumlanabilir sonuçlar üretir.',
+        'a_star': 'Heuristic tabanlı arama algoritması, en uygun tatil destinasyonunu bulmak için özellik ağırlıklarını kullanır.',
+        'genetic': 'Evrimsel hesaplama yaklaşımı kullanarak, tercihlerinize en uygun tatil paketlerini oluşturur.',
+        'iterative_deepening': 'Derinlik sınırlı arama ile tercihlerinize en uygun destinasyonları belirler.',
+        'knn': 'Benzer kullanıcıların tercihlerini analiz ederek size en uygun tatil önerilerini sunar.'
+      };
+      
+      return algorithmDescriptions[algorithmId] || 'Basit karar kuralları kullanarak tahmin yapar';
     }
     
     const loadRecommendations = () => {
@@ -146,6 +164,18 @@ export default {
         
         if (storedRecommendations) {
           recommendations.value = JSON.parse(storedRecommendations)
+          console.log('Loaded recommendations:', recommendations.value);
+          
+          // Ensure algorithm property exists in each recommendation
+          if (recommendations.value.length > 0 && !recommendations.value[0].algorithm) {
+            // Try to get algorithm from localStorage
+            const algorithm = localStorage.getItem('selectedAlgorithm')
+            if (algorithm) {
+              recommendations.value.forEach(rec => {
+                rec.algorithm = algorithm
+              })
+            }
+          }
         }
         
         if (!storedRecommendations) {
@@ -180,11 +210,14 @@ export default {
         'Antalya': 'url(https://images.unsplash.com/photo-1584132967334-10e028bd69f7?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
         'Bodrum': 'url(https://images.unsplash.com/photo-1600240644455-fd509335e9d8?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
         'Kapadokya': 'url(https://images.unsplash.com/photo-1527838832700-5059252407fa?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1298&q=80)',
+        'Uludağ': 'url(https://images.unsplash.com/photo-1605540436563-5bca919ae766?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1169&q=80)',
+        'Sarıkamış': 'url(https://images.unsplash.com/photo-1551698618-1dfe5d97d256?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
+        'Çanakkale': 'url(https://images.unsplash.com/photo-1600598439902-40408abc471d?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
+        'Samsun': 'url(https://images.unsplash.com/photo-1596627116790-af6f96d60f2c?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
         'Pamukkale': 'url(https://images.unsplash.com/photo-1589561454226-796a8aa89b05?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1169&q=80)',
         'Marmaris': 'url(https://images.unsplash.com/photo-1531212259128-7a25618fd21c?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1074&q=80)',
         'Fethiye': 'url(https://images.unsplash.com/photo-1605146075582-e31ba66a0ffc?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
         'Çeşme': 'url(https://images.unsplash.com/photo-1596463059283-da257325bab8?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
-        'Uludağ': 'url(https://images.unsplash.com/photo-1605540436563-5bca919ae766?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1169&q=80)',
         'Alaçatı': 'url(https://images.unsplash.com/photo-1584132915807-fd1f5fbc078f?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)'
       };
       

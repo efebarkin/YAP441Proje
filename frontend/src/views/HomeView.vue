@@ -3,7 +3,7 @@
     <section class="hero">
       <div class="hero-content">
         <h1 class="hero-title">Yapay Zeka ile Tatil Planlamanın Geleceği</h1>
-        <p class="hero-subtitle">TatilAI, sizin tercihlerinize göre en uygun tatil destinasyonlarını bulan yapay zeka destekli bir öneri sistemidir.</p>
+        <p class="hero-subtitle">Taitil Sepeti, sizin tercihlerinize göre en uygun tatil destinasyonlarını bulan yapay zeka destekli bir öneri sistemidir.</p>
         <div class="animation-container">
           <div class="vacation-animation">
             🏖️ 🏔️ 🏙️ 🏕️
@@ -122,7 +122,7 @@
                 <i class="fas fa-chevron-down"></i>
               </div>
             </div>
-            <div class="algorithm-description" v-if="selectedAlgorithmDescription">
+            <div class="algorithm-description" v-if="true">
               <div class="algorithm-info-icon">
                 <i class="fas fa-info-circle"></i>
               </div>
@@ -192,13 +192,17 @@ export default {
     })
     
     const algorithmDescriptions = {
-      'decision_tree': 'Karar ağacı algoritması, kullanıcı tercihlerine göre en uygun tatil destinasyonlarını belirler. Bütçe, sezon ve aktivite tercihlerinize göre en uygun seçenekleri sunar.',
-      'knn': 'K-En Yakın Komşu algoritması, benzer tercihlere sahip kullanıcıların beğendiği destinasyonları analiz ederek size özel öneriler sunar.',
-      'iterative_deepening': 'Yinelemeli Derinleştirme algoritması, tüm olası tatil seçeneklerini sistematik olarak değerlendirerek size en uygun destinasyonları bulur.'
+      'decision_tree': 'Basit karar kuralları kullanarak tahmin yapar, kolay anlaşılır ve yorumlanabilir sonuçlar üretir.',
+      'a_star': 'Heuristic tabanlı arama algoritması, en uygun tatil destinasyonunu bulmak için özellik ağırlıklarını kullanır.',
+      'genetic': 'Evrimsel hesaplama yaklaşımı kullanarak, tercihlerinize en uygun tatil paketlerini oluşturur.',
+      'iterative_deepening': 'Derinlik sınırlı arama ile tercihlerinize en uygun destinasyonları belirler.',
+      'knn': 'Benzer kullanıcıların tercihlerini analiz ederek size en uygun tatil önerilerini sunar.'
     }
 
     const selectedAlgorithmDescription = computed(() => {
-      return algorithmDescriptions[formData.algorithm] || ''
+      console.log('Selected algorithm:', formData.algorithm);
+      console.log('Available descriptions:', Object.keys(algorithmDescriptions));
+      return algorithmDescriptions[formData.algorithm] || '';
     })
 
     const fetchDestinationData = async () => {
@@ -216,9 +220,21 @@ export default {
       try {
         const response = await axios.get('http://localhost:5000/api/algorithms')
         algorithms.value = response.data.algorithms
+        
+        // Ensure formData.algorithm is set to a valid algorithm ID from the loaded algorithms
+        if (algorithms.value.length > 0 && !algorithms.value.find(a => a.id === formData.algorithm)) {
+          formData.algorithm = algorithms.value[0].id
+        }
       } catch (err) {
         console.error('Algoritma bilgileri alınamadı:', err)
-        error.value = 'Algoritma bilgileri yüklenirken bir hata oluştu. Lütfen daha sonra tekrar deneyin.'
+        // Fallback to default algorithms if API fails
+        algorithms.value = [
+          { id: 'decision_tree', name: 'Karar Ağacı' },
+          { id: 'a_star', name: 'A* Algoritması' },
+          { id: 'genetic', name: 'Genetik Algoritma' },
+          { id: 'iterative_deepening', name: 'Iterative Deepening' },
+          { id: 'knn', name: 'K-En Yakın Komşu' }
+        ]
       }
     }
     
@@ -234,6 +250,9 @@ export default {
           preferred_activity: formData.preferred_activity,
           selected_algorithm: formData.algorithm
         }
+        
+        // Save selected algorithm to localStorage
+        localStorage.setItem('selectedAlgorithm', formData.algorithm)
         
         const response = await axios.post('http://localhost:5000/recommendation', requestData)
 

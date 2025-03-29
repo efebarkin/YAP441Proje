@@ -118,8 +118,17 @@ class KNNVacationRecommender:
         
         logger.info("KNN model eğitimi tamamlandı")
     
-    def predict(self, user_preferences):
-        """Kullanıcı tercihleri için öneri yap"""
+    def predict(self, user_preferences, top_n=5):
+        """
+        Kullanıcı tercihlerine göre tatil önerisi yap
+        
+        Args:
+            user_preferences (dict): Kullanıcı tercihleri
+            top_n (int): Döndürülecek öneri sayısı
+            
+        Returns:
+            list: En yüksek skorlu top_n tatil önerisi
+        """
         if self.knn_model is None:
             logger.error("Model eğitilmemiş!")
             return None
@@ -132,59 +141,107 @@ class KNNVacationRecommender:
             for col in self.label_encoders:
                 if col in user_preferences:
                     features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
+                elif col == 'destination':
+                    # Destination değeri tahmin için gerekli değil
+                    logger.info("Tahmin için destination değeri kullanılmayacak")
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
-                    return None
+                    # Diğer eksik değerler için varsayılan değerler kullan
+                    if col == 'season':
+                        features[col] = self.label_encoders[col].transform(['Summer'])[0]  # Varsayılan sezon
+                    elif col == 'preferred_activity':
+                        features[col] = self.label_encoders[col].transform(['Beach'])[0]  # Varsayılan aktivite
+                    else:
+                        logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
+                        features[col] = 0  # Varsayılan değer
             
             # Sayısal değişkenler
             numerical_data = {}
             for col in ['budget', 'duration']:
                 if col in user_preferences:
-                    numerical_data[col] = user_preferences[col]
+                    numerical_data[col] = float(user_preferences[col])
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
-                    return None
+                    # Eksik değerler için varsayılan değerler
+                    if col == 'budget':
+                        numerical_data[col] = 5000.0  # Varsayılan bütçe
+                    elif col == 'duration':
+                        numerical_data[col] = 7.0  # Varsayılan süre
             
             # Olmayan değerleri tahmin et (value_score ve user_satisfaction)
             numerical_data['value_score'] = 3.5  # Ortalama bir değer
             numerical_data['user_satisfaction'] = 4.0  # Ortalama bir değer
             
-            # Sayısal verileri ölçeklendir
-            numerical_features = np.array([[
-                numerical_data['budget'],
-                numerical_data['duration'],
-                numerical_data['value_score'],
-                numerical_data['user_satisfaction']
-            ]])
-            scaled_numerical = self.scaler.transform(numerical_features)
+            # Tüm destinasyonlar için tahmin yap
+            all_destinations = self.label_encoders['destination'].classes_
+            recommendations = []
             
-            # Tüm özellikleri birleştir
-            X_pred = np.zeros((1, len(self.feature_columns)))
-            feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
+            for dest in all_destinations:
+                try:
+                    # Destination'ı encoding et
+                    dest_encoded = self.label_encoders['destination'].transform([dest])[0]
+                    
+                    # Sayısal verileri ölçeklendir
+                    numerical_features = np.array([[
+                        numerical_data['budget'],
+                        numerical_data['duration'],
+                        numerical_data['value_score'],
+                        numerical_data['user_satisfaction']
+                    ]])
+                    scaled_numerical = self.scaler.transform(numerical_features)
+                    
+                    # Tüm özellikleri birleştir
+                    X_pred = np.zeros((1, len(self.feature_columns)))
+                    feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
+                    
+                    # Kategorik değerleri yerleştir
+                    for col, value in features.items():
+                        if col in feature_indices:
+                            X_pred[0, feature_indices[col]] = value
+                    
+                    # Destination değerini yerleştir
+                    if 'destination' in feature_indices:
+                        X_pred[0, feature_indices['destination']] = dest_encoded
+                    
+                    # Sayısal değerleri yerleştir
+                    for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
+                        if col in feature_indices:
+                            X_pred[0, feature_indices[col]] = scaled_numerical[0, i]
+                    
+                    # Tahmin yap
+                    distances, indices = self.knn_model.kneighbors(X_pred)
+                    confidence = 1.0 / (1.0 + np.mean(distances))  # Mesafeyi güven skoruna dönüştür
+                    
+                    # Eğer güven değeri yeterince yüksekse, bu destinasyonu öneriler listesine ekle
+                    if confidence > 0.1:  # Minimum güven eşiği
+                        # Destinasyon bilgilerini al
+                        costs = self.calculate_costs(dest, numerical_data['duration'])
+                        
+                        recommendations.append({
+                            'destination': dest,
+                            'confidence': float(confidence),
+                            'algorithm': 'knn',
+                            'season': user_preferences.get('season', 'Summer'),
+                            'preferred_activity': user_preferences.get('preferred_activity', 'Beach'),
+                            'budget': numerical_data['budget'],
+                            'duration': numerical_data['duration'],
+                            'reason': f"KNN algoritması bu destinasyonu {confidence:.2f} güven skoru ile önerdi."
+                        })
+                except Exception as inner_e:
+                    logger.warning(f"Destinasyon {dest} için tahmin hatası: {str(inner_e)}")
+                    continue
             
-            # Kategorik değerleri yerleştir
-            for col, value in features.items():
-                if col in feature_indices:
-                    X_pred[0, feature_indices[col]] = value
+            # Güven değerine göre sırala ve en iyi top_n tanesini döndür
+            recommendations.sort(key=lambda x: x['confidence'], reverse=True)
             
-            # Sayısal değerleri yerleştir
-            for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
-                if col in feature_indices:
-                    X_pred[0, feature_indices[col]] = scaled_numerical[0, i]
-            
-            # Tahmin yap
-            destination = self.knn_model.predict(X_pred)[0]
-            
-            # Komşuluk mesafeleri ve en yakın komşular hakkında bilgi
-            distances, indices = self.knn_model.kneighbors(X_pred)
-            
-            # Güven değeri oluştur (en yakın komşu mesafelerine göre)
-            confidence = 1.0 / (1.0 + np.mean(distances[0]))
-            
-            return {'destination': destination, 'confidence': float(confidence)}
+            if not recommendations:
+                logger.warning("KNN algoritması hiçbir destinasyon önerisi bulamadı.")
+                return None
+                
+            return recommendations[:top_n]
         
         except Exception as e:
             logger.error(f"Tahmin hatası: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def predict_top_n(self, user_preferences, top_n=5):
@@ -198,107 +255,7 @@ class KNNVacationRecommender:
         Returns:
             list: En yüksek skorlu top_n tatil önerisi
         """
-        if self.knn_model is None:
-            logger.error("Model eğitilmemiş!")
-            return []
-        
-        try:
-            # Kullanıcı tercihlerini ön işle
-            features = {}
-            
-            # Kategorik değişkenler için encoding
-            season = user_preferences.get('season')
-            preferred_activity = user_preferences.get('preferred_activity')
-            destination = user_preferences.get('destination', None)
-            
-            if season and 'season' in self.label_encoders:
-                features['season'] = self.label_encoders['season'].transform([str(season)])[0]
-            else:
-                logger.warning(f"season kullanıcı tercihlerinde bulunamadı veya label encoder yok!")
-                return []
-                
-            if preferred_activity and 'preferred_activity' in self.label_encoders:
-                features['preferred_activity'] = self.label_encoders['preferred_activity'].transform([str(preferred_activity)])[0]
-            else:
-                logger.warning(f"preferred_activity kullanıcı tercihlerinde bulunamadı veya label encoder yok!")
-                return []
-            
-            # Destination belirtilmişse ekle, belirtilmemişse tüm destinasyonlar için tahmin yapacağız
-            if destination and 'destination' in self.label_encoders:
-                features['destination'] = self.label_encoders['destination'].transform([str(destination)])[0]
-            
-            # Sayısal değişkenler
-            numerical_data = {}
-            for col in ['budget', 'duration']:
-                if col in user_preferences:
-                    numerical_data[col] = user_preferences[col]
-                else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
-                    return []
-            
-            # Olmayan değerleri tahmin et (value_score ve user_satisfaction)
-            numerical_data['value_score'] = 3.5  # Ortalama bir değer
-            numerical_data['user_satisfaction'] = 4.0  # Ortalama bir değer
-            
-            # Tüm destinasyonlar için tahmin yap
-            all_destinations = self.label_encoders['destination'].classes_
-            recommendations = []
-            
-            for dest in all_destinations:
-                # Destination'ı encoding et
-                dest_encoded = self.label_encoders['destination'].transform([dest])[0]
-                
-                # Tüm özellikleri birleştir
-                X_pred = np.zeros((1, len(self.feature_columns)))
-                feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
-                
-                # Kategorik değerleri yerleştir
-                for col, value in features.items():
-                    if col in feature_indices:
-                        X_pred[0, feature_indices[col]] = value
-                
-                # Destination değerini yerleştir
-                X_pred[0, feature_indices['destination']] = dest_encoded
-                
-                # Sayısal değerleri ölçeklendir
-                numerical_features = np.array([[
-                    numerical_data['budget'],
-                    numerical_data['duration'],
-                    numerical_data['value_score'],
-                    numerical_data['user_satisfaction']
-                ]])
-                scaled_numerical = self.scaler.transform(numerical_features)
-                
-                # Sayısal değerleri yerleştir
-                for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
-                    if col in feature_indices:
-                        X_pred[0, feature_indices[col]] = scaled_numerical[0, i]
-                
-                # Tahmin yap
-                distances, indices = self.knn_model.kneighbors(X_pred)
-                confidence = 1.0 / (1.0 + np.mean(distances))  # Mesafeyi güven skoruna dönüştür
-                
-                # Eğer güven değeri yeterince yüksekse, bu destinasyonu öneriler listesine ekle
-                if confidence > 0.1:  # Minimum güven eşiği
-                    # Destinasyon bilgilerini al
-                    costs = self.calculate_costs(dest, user_preferences.get('duration', 7))
-                    
-                    recommendations.append({
-                        'destination': dest,
-                        'confidence': float(confidence),
-                        'algorithm_confidence': float(confidence),
-                        'season': season,
-                        'activity': preferred_activity,
-                        'costs': costs
-                    })
-            
-            # Güven değerine göre sırala ve en iyi top_n tanesini döndür
-            recommendations.sort(key=lambda x: x['confidence'], reverse=True)
-            return recommendations[:top_n]
-        
-        except Exception as e:
-            logger.error(f"Tahmin hatası: {str(e)}")
-            return []
+        return self.predict(user_preferences, top_n)
     
     def calculate_costs(self, destination, duration):
         """

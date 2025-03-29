@@ -104,12 +104,28 @@ class ModelEvaluator:
                         'duration': row['duration']
                     }
                     
-                    prediction = model.predict(user_preferences)
-                    
-                    if prediction:
-                        predictions.append(prediction['destination'])
-                        confidences.append(prediction.get('confidence', 0.0))
-                        ground_truth.append(row['recommended_vacation'])
+                    try:
+                        # Modelin birden fazla öneri döndürdüğünü varsayalım
+                        predictions_result = model.predict(user_preferences, top_n=5)
+                        
+                        # Eğer sonuç None değilse ve boş değilse
+                        if predictions_result and len(predictions_result) > 0:
+                            # İlk öneriyi alalım (en yüksek güven skoruna sahip olan)
+                            top_prediction = predictions_result[0]
+                            
+                            # Sonuç bir sözlük mü yoksa liste mi kontrol edelim
+                            if isinstance(top_prediction, dict) and 'destination' in top_prediction:
+                                predictions.append(top_prediction['destination'])
+                                confidences.append(top_prediction.get('confidence', 0.0))
+                                ground_truth.append(row['recommended_vacation'])
+                            elif isinstance(predictions_result, dict) and 'destination' in predictions_result:
+                                # Bazı modeller tek bir sözlük döndürebilir
+                                predictions.append(predictions_result['destination'])
+                                confidences.append(predictions_result.get('confidence', 0.0))
+                                ground_truth.append(row['recommended_vacation'])
+                    except Exception as e:
+                        logger.warning(f"{model_name} için tahmin hatası: {str(e)}")
+                        continue
                 
                 end_time = time.time()
                 inference_time = end_time - start_time
@@ -161,7 +177,10 @@ class ModelEvaluator:
             plt.ylabel('Gerçek Değer')
             plt.xlabel('Tahmin Edilen Değer')
             plt.tight_layout()
-            plt.savefig(f'models/{model_name.lower().replace(" ", "_")}_confusion_matrix.png', dpi=300)
+            
+            # Dosya adını güvenli hale getir
+            safe_model_name = model_name.lower().replace(" ", "_").replace("*", "star")
+            plt.savefig(f'models/{safe_model_name}_confusion_matrix.png', dpi=300)
             logger.info(f"{model_name} confusion matrix kaydedildi")
         except Exception as e:
             logger.error(f"Confusion matrix görselleştirme hatası: {str(e)}")
