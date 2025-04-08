@@ -255,63 +255,22 @@ class AStarVacationRecommender:
     def _weighted_heuristic(self, instance, destination_profile, weights):
         similarity = 0.0
         
-        # Kategorik ve sayısal özellikleri ayrı değerlendir
-        categorical_indices = [i for i, col in enumerate(self.feature_columns) 
-                            if col in ['season', 'preferred_activity', 'destination']]
-        numerical_indices = [i for i, col in enumerate(self.feature_columns) 
-                            if col in ['budget', 'duration', 'value_score', 'user_satisfaction']]
-        
-        # Kategorik özellikler için tam eşleşme ödülü
-        for i in categorical_indices:
-            # Tür kontrolü ve dönüşümü
+        # Use a simpler, more consistent approach for all features
+        for i in range(len(weights)):
+            # Convert both to float for consistent handling
             try:
-                instance_val = float(instance[i]) if isinstance(instance[i], (int, float, np.number)) else instance[i]
-                profile_val = float(destination_profile[i]) if isinstance(destination_profile[i], (int, float, np.number)) else destination_profile[i]
+                instance_val = float(instance[i])
+                profile_val = float(destination_profile[i])
                 
-                if instance_val == profile_val:
-                    # Tam eşleşme için bonus
-                    similarity += 2.0 * weights[i]
-                else:
-                    # Sayısal değerler için
-                    if isinstance(instance_val, (int, float)) and isinstance(profile_val, (int, float)):
-                        diff = abs(instance_val - profile_val)
-                        similarity -= diff * weights[i] * 0.5
-                    else:
-                        # Kategorik değerler için eşleşmeme durumunda sabit ceza
-                        similarity -= 0.5 * weights[i]
-            except Exception as e:
-                # Hata durumunda log ve devam et
-                logger.warning(f"Özellik karşılaştırma hatası (indeks {i}): {str(e)}")
-                continue
-        
-        # Sayısal özellikler için mesafe tabanlı benzerlik
-        for i in numerical_indices:
-            try:
-                # Tür kontrolü ve dönüşümü
-                instance_val = float(instance[i]) if isinstance(instance[i], (int, float, np.number)) else 0.0
-                profile_val = float(destination_profile[i]) if isinstance(destination_profile[i], (int, float, np.number)) else 0.0
-                
-                # Mesafe hesapla
+                # Simple weighted distance
                 diff = abs(instance_val - profile_val)
-                
-                # Normalize edilmiş veri için uygun bir eşik
-                threshold = 0.5
-                
-                # Eşik altındaki farklar için daha az ceza
-                if diff < threshold:
-                    similarity -= (diff**2) * weights[i]
+                similarity -= diff * weights[i]
+            except:
+                # For categorical features that can't convert to float
+                if instance[i] == destination_profile[i]:
+                    similarity += weights[i]  # Reward exact matches
                 else:
-                    # Eşik üstü için lineer ceza - aşırı cezalandırmayı önle
-                    similarity -= (threshold**2 + (diff - threshold)) * weights[i]
-            except Exception as e:
-                # Hata durumunda log ve devam et
-                logger.warning(f"Sayısal özellik karşılaştırma hatası (indeks {i}): {str(e)}")
-                continue
-        
-        # Bonus faktörü ekle - daha iyimser heuristic için
-        optimism_factor = 1.2
-        if similarity > 0:
-            similarity *= optimism_factor
+                    similarity -= weights[i] * 0.5  # Smaller penalty for mismatches
         
         return similarity
     
@@ -578,46 +537,40 @@ class AStarVacationRecommender:
             })
         
         return results
-    
+        
     def save_model(self):
         """Modeli kaydet"""
-        # Label encoder'ları kaydet
-        joblib.dump(self.label_encoders, 'models/astar_label_encoders.joblib')
+        # Save all necessary state
+        model_state = {
+            'label_encoders': self.label_encoders,
+            'scaler': self.scaler,
+            'feature_columns': self.feature_columns,
+            'destination_profiles': self.destination_profiles,
+            'feature_weights': self.feature_weights,
+            'destinations': self.destinations,
+            'destination_encodings': self.destination_encodings
+        }
         
-        # Scaler'ı kaydet
-        joblib.dump(self.scaler, 'models/astar_scaler.joblib')
-        
-        # Feature kolonlarını kaydet
-        joblib.dump(self.feature_columns, 'models/astar_feature_columns.joblib')
-        
-        # Destinasyon profillerini kaydet
-        joblib.dump(self.destination_profiles, 'models/astar_destination_profiles.joblib')
-        
-        # Özellik ağırlıklarını kaydet
-        joblib.dump(self.feature_weights, 'models/astar_feature_weights.joblib')
-        
+        joblib.dump(model_state, 'models/astar_model_state.joblib')
         logger.info("A* modeli kaydedildi")
     
     def load_model(self):
         """Modeli yükle"""
         try:
-            # Label encoder'ları yükle
-            self.label_encoders = joblib.load('models/astar_label_encoders.joblib')
+            # Load complete state
+            model_state = joblib.load('models/astar_model_state.joblib')
             
-            # Scaler'ı yükle
-            self.scaler = joblib.load('models/astar_scaler.joblib')
-            
-            # Feature kolonlarını yükle
-            self.feature_columns = joblib.load('models/astar_feature_columns.joblib')
-            
-            # Destinasyon profillerini yükle
-            self.destination_profiles = joblib.load('models/astar_destination_profiles.joblib')
-            
-            # Özellik ağırlıklarını yükle
-            self.feature_weights = joblib.load('models/astar_feature_weights.joblib')
+            # Restore all attributes
+            self.label_encoders = model_state['label_encoders']
+            self.scaler = model_state['scaler']
+            self.feature_columns = model_state['feature_columns']
+            self.destination_profiles = model_state['destination_profiles']
+            self.feature_weights = model_state['feature_weights']
+            self.destinations = model_state['destinations']
+            self.destination_encodings = model_state['destination_encodings']
             
             logger.info("A* modeli yüklendi")
             return True
         except Exception as e:
             logger.error(f"Model yükleme hatası: {str(e)}")
-            return False
+        return False

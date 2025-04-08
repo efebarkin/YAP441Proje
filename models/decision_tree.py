@@ -141,106 +141,110 @@ class DecisionTreeVacationRecommender:
                 elif col in user_preferences:
                     features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
-                    return None
+                    # Eksik değerler için varsayılan değerler kullan
+                    if col == 'season':
+                        features[col] = self.label_encoders[col].transform(['Summer'])[0]  # Varsayılan sezon
+                    elif col == 'preferred_activity':
+                        features[col] = self.label_encoders[col].transform(['Beach'])[0]  # Varsayılan aktivite
+                    else:
+                        logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
+                        features[col] = 0  # Varsayılan değer
             
             # Sayısal değişkenler
             numerical_data = {}
             for col in ['budget', 'duration']:
                 if col in user_preferences:
-                    numerical_data[col] = user_preferences[col]
+                    numerical_data[col] = float(user_preferences[col])
                 else:
-                    logger.warning(f"{col} kullanıcı tercihlerinde bulunamadı!")
-                    return None
+                    # Eksik değerler için varsayılan değerler
+                    if col == 'budget':
+                        numerical_data[col] = 5000.0  # Varsayılan bütçe
+                    elif col == 'duration':
+                        numerical_data[col] = 7.0  # Varsayılan süre
             
             # Olmayan değerleri tahmin et (value_score ve user_satisfaction)
             numerical_data['value_score'] = 3.5  # Ortalama bir değer
             numerical_data['user_satisfaction'] = 4.0  # Ortalama bir değer
-            
-            # Sayısal verileri ölçeklendir
-            numerical_features = np.array([[
-                numerical_data['budget'],
-                numerical_data['duration'],
-                numerical_data['value_score'],
-                numerical_data['user_satisfaction']
-            ]])
-            scaled_numerical = self.scaler.transform(numerical_features)
-            
-            # Tüm özellikleri birleştir
-            X_pred = np.zeros((1, len(self.feature_columns)))
-            feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
-            
-            # Kategorik değerleri yerleştir
-            for col, value in features.items():
-                if col in feature_indices:
-                    X_pred[0, feature_indices[col]] = value
-            
-            # Sayısal değerleri yerleştir
-            for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
-                if col in feature_indices:
-                    X_pred[0, feature_indices[col]] = scaled_numerical[0, i]
-            
-            # Tahmin yap
-            destination = self.dt_model.predict(X_pred)[0]
-            
-            # Olasılıkları al
-            probabilities = self.dt_model.predict_proba(X_pred)[0]
-            confidence = max(probabilities)
             
             # Tüm destinasyonlar için tahmin yap
             all_destinations = self.label_encoders['destination'].classes_
             recommendations = []
             
             for dest in all_destinations:
-                # Destination'ı encoding et
-                dest_encoded = self.label_encoders['destination'].transform([dest])[0]
-                
-                # Tüm özellikleri birleştir
-                X_pred = np.zeros((1, len(self.feature_columns)))
-                feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
-                
-                # Kategorik değerleri yerleştir
-                for col, value in features.items():
-                    if col in feature_indices:
-                        X_pred[0, feature_indices[col]] = value
-                
-                # Destination değerini yerleştir
-                X_pred[0, feature_indices['destination']] = dest_encoded
-                
-                # Sayısal değerleri ölçeklendir
-                numerical_features = np.array([[
-                    numerical_data['budget'],
-                    numerical_data['duration'],
-                    numerical_data['value_score'],
-                    numerical_data['user_satisfaction']
-                ]])
-                scaled_numerical = self.scaler.transform(numerical_features)
-                
-                # Sayısal değerleri yerleştir
-                for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
-                    if col in feature_indices:
-                        X_pred[0, feature_indices[col]] = scaled_numerical[0, i]
-                
-                # Tahmin yap
-                probabilities = self.dt_model.predict_proba(X_pred)[0]
-                confidence = probabilities[1] if len(probabilities) > 1 else 0  # Sınıf 1 (tavsiye edilir) olasılığı
-                
-                # Eğer güven değeri yeterince yüksekse, bu destinasyonu öneriler listesine ekle
-                if confidence > 0.1:  # Minimum güven eşiği
-                    # Destinasyon bilgilerini al
-                    costs = self.calculate_costs(dest, user_preferences.get('duration', 7))
+                try:
+                    # Destination'ı encoding et
+                    dest_encoded = self.label_encoders['destination'].transform([dest])[0]
                     
-                    recommendations.append({
-                        'destination': dest,
-                        'confidence': float(confidence),
-                        'algorithm_confidence': float(confidence),
-                        'season': user_preferences.get('season'),
-                        'activity': user_preferences.get('preferred_activity'),
-                        'costs': costs
+                    # Sayısal verileri ölçeklendir - DataFrame kullanarak özellik adlarını koru
+                    numerical_features = pd.DataFrame({
+                        'budget': [numerical_data['budget']],
+                        'duration': [numerical_data['duration']],
+                        'value_score': [numerical_data['value_score']],
+                        'user_satisfaction': [numerical_data['user_satisfaction']]
                     })
+                    scaled_numerical = self.scaler.transform(numerical_features)
+                    
+                    # Tüm özellikleri birleştir - DataFrame kullanarak özellik adlarını koru
+                    feature_data = {}
+                    for i, col in enumerate(self.feature_columns):
+                        if col == 'destination':
+                            feature_data[col] = dest_encoded
+                        elif col in ['budget', 'duration', 'value_score', 'user_satisfaction']:
+                            # Sayısal değerlerin indeksini bul
+                            num_cols = ['budget', 'duration', 'value_score', 'user_satisfaction']
+                            num_idx = num_cols.index(col)
+                            feature_data[col] = scaled_numerical[0, num_idx]
+                        elif col in features:
+                            feature_data[col] = features[col]
+                        else:
+                            feature_data[col] = 0  # Varsayılan değer
+                    
+                    # DataFrame'e dönüştür
+                    X_pred = pd.DataFrame([feature_data], columns=self.feature_columns)
+                    
+                    # Tahmin yap
+                    probabilities = self.dt_model.predict_proba(X_pred)[0]
+                    confidence = probabilities[1] if len(probabilities) > 1 else probabilities[0]
+                    
+                    # Eğer güven değeri yeterince yüksekse, bu destinasyonu öneriler listesine ekle
+                    if confidence > 0.1:  # Minimum güven eşiği
+                        # Destinasyon bilgilerini al
+                        costs = self.calculate_costs(dest, numerical_data['duration'])
+                        
+                        recommendations.append({
+                            'destination': dest,
+                            'confidence': float(confidence),
+                            'cost': costs,
+                            'season': user_preferences.get('season', 'Bilinmiyor'),
+                            'preferred_activity': user_preferences.get('preferred_activity', 'Bilinmiyor'),
+                            'budget': numerical_data['budget'],
+                            'duration': numerical_data['duration'],
+                            'algorithm': 'decision_tree',
+                            'reason': f"Karar ağacı algoritması bu destinasyonu {confidence:.2f} güven skoru ile önerdi."
+                        })
+                except Exception as e:
+                    logger.warning(f"Destinasyon {dest} için tahmin hatası: {str(e)}")
+                    continue
             
             # Güven değerine göre sırala ve en iyi top_n tanesini döndür
             recommendations.sort(key=lambda x: x['confidence'], reverse=True)
+            
+            if not recommendations:
+                logger.warning("Karar ağacı algoritması hiçbir destinasyon önerisi bulamadı.")
+                # Varsayılan öneriler
+                for i, dest in enumerate(all_destinations[:top_n]):
+                    confidence = 0.9 - (i * 0.1)  # Azalan güven skoru
+                    recommendations.append({
+                        'destination': dest,
+                        'confidence': max(0.5, confidence),  # En az 0.5 güven skoru
+                        'season': user_preferences.get('season', 'Bilinmiyor'),
+                        'preferred_activity': user_preferences.get('preferred_activity', 'Bilinmiyor'),
+                        'budget': numerical_data['budget'],
+                        'duration': numerical_data['duration'],
+                        'algorithm': 'decision_tree_fallback',
+                        'reason': "Destinasyon değerlendirmesi sırasında hata oluştu, popüler bir destinasyon öneriliyor."
+                    })
+            
             return recommendations[:top_n]
         
         except Exception as e:

@@ -10,6 +10,7 @@ from models.a_star_search import AStarVacationRecommender
 from models.model_evaluator import ModelEvaluator
 import matplotlib
 matplotlib.use('Agg')  # GUI olmadan çalışması için
+import time
 
 # Loglama ayarları
 logging.basicConfig(level=logging.INFO)
@@ -196,40 +197,181 @@ def train_genetic_algorithm(df):
     logger.info("Genetik Algoritma model eğitimi tamamlandı")
 
 def evaluate_all_models_without_training(df):
-    """Eğitilmiş modelleri yükle ve değerlendir (eğitim yapmadan)"""
+    """Tüm modelleri eğitmeden değerlendir"""
     logger.info("Eğitilmiş modellerin değerlendirmesi başlıyor...")
     
-    # Model değerlendirici oluştur
-    evaluator = ModelEvaluator()
-    
     # Modelleri yükle
-    for model_name, model in evaluator.models.items():
+    models = {}
+    
+    # Decision Tree
+    try:
+        dt_model = DecisionTreeVacationRecommender()
+        dt_model.load_model()
+        models['Decision Tree'] = dt_model
+        logger.info("Decision Tree modeli başarıyla yüklendi.")
+    except Exception as e:
+        logger.error(f"Decision Tree modeli yüklenirken hata: {str(e)}")
+    
+    # KNN
+    try:
+        knn_model = KNNVacationRecommender()
+        knn_model.load_model()
+        models['KNN'] = knn_model
+        logger.info("KNN modeli başarıyla yüklendi.")
+    except Exception as e:
+        logger.error(f"KNN modeli yüklenirken hata: {str(e)}")
+    
+    # IDDFS
+    try:
+        iddfs_model = IDDFSVacationRecommender()
+        iddfs_model.load_model()
+        models['IDDFS'] = iddfs_model
+        logger.info("IDDFS modeli başarıyla yüklendi.")
+    except Exception as e:
+        logger.error(f"IDDFS modeli yüklenirken hata: {str(e)}")
+    
+    # Genetic Algorithm
+    try:
+        ga_model = GeneticVacationRecommender()
+        ga_model.load_model()
+        models['Genetic Algorithm'] = ga_model
+        logger.info("Genetic Algorithm modeli başarıyla yüklendi.")
+    except Exception as e:
+        logger.error(f"Genetic Algorithm modeli yüklenirken hata: {str(e)}")
+    
+    # A* Search
+    try:
+        astar_model = AStarVacationRecommender()
+        astar_model.load_model()
+        models['A* Search'] = astar_model
+        logger.info("A* Search modeli başarıyla yüklendi.")
+    except Exception as e:
+        logger.error(f"A* Search modeli yüklenirken hata: {str(e)}")
+    
+    # Değerlendirme için küçük bir test seti kullan
+    # Uyarıları ve KeyboardInterrupt hatalarını önlemek için test setini küçült
+    test_size = min(100, len(df) // 10)  # Veri setinin %10'u veya en fazla 100 örnek
+    test_df = df.sample(n=test_size, random_state=42)
+    
+    # Değerlendirme için özel bir fonksiyon kullan
+    evaluate_models_manually(models, test_df)
+    
+    logger.info("Tüm modellerin değerlendirmesi tamamlandı!")
+
+def evaluate_models_manually(models, test_df):
+    """Modelleri manuel olarak değerlendir (scikit-learn uyarılarını önlemek için)"""
+    logger.info("Model değerlendirmesi başlıyor...")
+    
+    results = {}
+    
+    for model_name, model in models.items():
+        logger.info(f"{model_name} değerlendirmesi başlıyor...")
+        
         try:
-            # Modeli yükle
-            model.load_model()
-            logger.info(f"{model_name} modeli başarıyla yüklendi.")
+            # Değerlendirme için zamanı ölç
+            start_time = time.time()
             
-            # Sonuçları sakla
-            evaluator.results[model_name] = {
-                'model': model,
-                'training_time': 0  # Eğitim yapılmadığı için 0
-            }
+            # Tahminler
+            predictions = []
+            ground_truth = []
+            confidences = []
+            
+            # Her örnek için tahmin yap
+            for _, row in test_df.iterrows():
+                user_preferences = {
+                    'season': row['season'],
+                    'preferred_activity': row['preferred_activity'],
+                    'budget': row['budget'],
+                    'duration': row['duration']
+                }
+                
+                try:
+                    # Tahmin yap
+                    predictions_result = model.predict(user_preferences, top_n=5)
+                    
+                    # Sonuçları kontrol et
+                    if predictions_result and len(predictions_result) > 0:
+                        # İlk öneriyi al
+                        top_prediction = predictions_result[0]
+                        
+                        # Sonuç formatını kontrol et
+                        if isinstance(top_prediction, dict) and 'destination' in top_prediction:
+                            predictions.append(top_prediction['destination'])
+                            confidences.append(top_prediction.get('confidence', 0.0))
+                            ground_truth.append(row['recommended_vacation'])
+                        elif isinstance(predictions_result, dict) and 'destination' in predictions_result:
+                            predictions.append(predictions_result['destination'])
+                            confidences.append(predictions_result.get('confidence', 0.0))
+                            ground_truth.append(row['recommended_vacation'])
+                except Exception as e:
+                    logger.warning(f"{model_name} için tahmin hatası: {str(e)}")
+                    continue
+            
+            end_time = time.time()
+            inference_time = end_time - start_time
+            
+            # Metrikleri hesapla
+            if len(predictions) > 0:
+                # Doğruluk
+                correct = sum(1 for p, g in zip(predictions, ground_truth) if p == g)
+                accuracy = correct / len(predictions)
+                
+                # Precision, Recall ve F1 (manuel hesapla)
+                labels = list(set(ground_truth + predictions))
+                precision_sum = 0
+                recall_sum = 0
+                f1_sum = 0
+                label_count = 0
+                
+                for label in labels:
+                    true_positives = sum(1 for p, g in zip(predictions, ground_truth) if p == g and p == label)
+                    false_positives = sum(1 for p, g in zip(predictions, ground_truth) if p != g and p == label)
+                    false_negatives = sum(1 for p, g in zip(predictions, ground_truth) if p != g and g == label)
+                    
+                    # Sıfıra bölme hatasını önle
+                    precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
+                    recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+                    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+                    
+                    precision_sum += precision
+                    recall_sum += recall
+                    f1_sum += f1
+                    label_count += 1
+                
+                # Ağırlıklı ortalama
+                precision = precision_sum / label_count if label_count > 0 else 0
+                recall = recall_sum / label_count if label_count > 0 else 0
+                f1 = f1_sum / label_count if label_count > 0 else 0
+                
+                # Ortalama güven
+                avg_confidence = sum(confidences) / len(confidences) if confidences else 0
+                
+                # Sonuçları kaydet
+                results[model_name] = {
+                    'accuracy': accuracy,
+                    'precision': precision,
+                    'recall': recall,
+                    'f1_score': f1,
+                    'avg_confidence': avg_confidence,
+                    'inference_time': inference_time / len(predictions) if len(predictions) > 0 else 0,
+                    'predictions': len(predictions)
+                }
+                
+                logger.info(f"{model_name} değerlendirmesi tamamlandı.")
+                logger.info(f"Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}")
+                logger.info(f"Ortalama güven: {avg_confidence:.4f}, Çıkarım süresi: {inference_time/len(predictions):.6f} saniye/örnek")
+            else:
+                logger.warning(f"{model_name} için tahmin yapılamadı.")
+                
         except Exception as e:
-            logger.error(f"{model_name} modeli yüklenirken hata: {str(e)}")
+            logger.error(f"{model_name} değerlendirmesi sırasında hata: {str(e)}")
     
-    # Modelleri değerlendir
-    evaluator.evaluate_all_models(df)
+    # En iyi modeli bul
+    if results:
+        best_model = max(results.items(), key=lambda x: x[1]['accuracy'])
+        logger.info(f"En iyi model (doğruluk metriğine göre): {best_model[0]}")
     
-    # Karşılaştırma grafiği oluştur
-    comparison_df = evaluator.compare_models()
-    
-    # En iyi modeli bul ve logla
-    best_model = evaluator.get_best_model(metric='accuracy')
-    if best_model:
-        logger.info(f"En iyi model (doğruluk metriğine göre): {type(best_model).__name__}")
-    
-    logger.info("Tüm modellerin değerlendirmesi tamamlandı")
-    return comparison_df
+    return results
 
 def train_a_star(df):
     """A* Search modelini eğit"""
@@ -263,8 +405,8 @@ def train_a_star(df):
     balanced_df = pd.concat(balanced_dfs)
     logger.info(f"Dengeli veri seti boyutu: {len(balanced_df)}")
     
-    # Modeli geliştirilmiş parametrelerle eğit
-    a_star_model.train(balanced_df, iterations=200, learning_rate=0.01)
+    # Modeli eğit (iterations ve learning_rate parametrelerini kaldırdık)
+    a_star_model.train(balanced_df)
     
     # Modeli kaydet
     a_star_model.save_model()

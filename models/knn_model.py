@@ -143,7 +143,7 @@ class KNNVacationRecommender:
                     features[col] = self.label_encoders[col].transform([str(user_preferences[col])])[0]
                 elif col == 'destination':
                     # Destination değeri tahmin için gerekli değil
-                    logger.info("Tahmin için destination değeri kullanılmayacak")
+                    logger.debug("Tahmin için destination değeri kullanılmayacak")
                 else:
                     # Diğer eksik değerler için varsayılan değerler kullan
                     if col == 'season':
@@ -180,68 +180,65 @@ class KNNVacationRecommender:
                     dest_encoded = self.label_encoders['destination'].transform([dest])[0]
                     
                     # Sayısal verileri ölçeklendir
-                    numerical_features = np.array([[
-                        numerical_data['budget'],
-                        numerical_data['duration'],
-                        numerical_data['value_score'],
-                        numerical_data['user_satisfaction']
-                    ]])
+                    numerical_features = pd.DataFrame({
+                        'budget': [numerical_data['budget']],
+                        'duration': [numerical_data['duration']],
+                        'value_score': [numerical_data['value_score']],
+                        'user_satisfaction': [numerical_data['user_satisfaction']]
+                    })
                     scaled_numerical = self.scaler.transform(numerical_features)
                     
-                    # Tüm özellikleri birleştir
-                    X_pred = np.zeros((1, len(self.feature_columns)))
-                    feature_indices = {feature: i for i, feature in enumerate(self.feature_columns)}
+                    # Tüm özellikleri birleştir - DataFrame kullanarak özellik adlarını koru
+                    feature_data = {}
+                    for i, col in enumerate(self.feature_columns):
+                        if col == 'destination':
+                            feature_data[col] = dest_encoded
+                        elif col in ['budget', 'duration', 'value_score', 'user_satisfaction']:
+                            # Sayısal değerlerin indeksini bul
+                            num_cols = ['budget', 'duration', 'value_score', 'user_satisfaction']
+                            num_idx = num_cols.index(col)
+                            feature_data[col] = scaled_numerical[0, num_idx]
+                        elif col in features:
+                            feature_data[col] = features[col]
+                        else:
+                            feature_data[col] = 0  # Varsayılan değer
                     
-                    # Kategorik değerleri yerleştir
-                    for col, value in features.items():
-                        if col in feature_indices:
-                            X_pred[0, feature_indices[col]] = value
-                    
-                    # Destination değerini yerleştir
-                    if 'destination' in feature_indices:
-                        X_pred[0, feature_indices['destination']] = dest_encoded
-                    
-                    # Sayısal değerleri yerleştir
-                    for i, col in enumerate(['budget', 'duration', 'value_score', 'user_satisfaction']):
-                        if col in feature_indices:
-                            X_pred[0, feature_indices[col]] = scaled_numerical[0, i]
+                    # DataFrame'e dönüştür
+                    X_pred = pd.DataFrame([feature_data], columns=self.feature_columns)
                     
                     # Tahmin yap
                     distances, indices = self.knn_model.kneighbors(X_pred)
-                    confidence = 1.0 / (1.0 + np.mean(distances))  # Mesafeyi güven skoruna dönüştür
                     
-                    # Eğer güven değeri yeterince yüksekse, bu destinasyonu öneriler listesine ekle
-                    if confidence > 0.1:  # Minimum güven eşiği
-                        # Destinasyon bilgilerini al
-                        costs = self.calculate_costs(dest, numerical_data['duration'])
-                        
-                        recommendations.append({
-                            'destination': dest,
-                            'confidence': float(confidence),
-                            'algorithm': 'knn',
-                            'season': user_preferences.get('season', 'Summer'),
-                            'preferred_activity': user_preferences.get('preferred_activity', 'Beach'),
-                            'budget': numerical_data['budget'],
-                            'duration': numerical_data['duration'],
-                            'reason': f"KNN algoritması bu destinasyonu {confidence:.2f} güven skoru ile önerdi."
-                        })
-                except Exception as inner_e:
-                    logger.warning(f"Destinasyon {dest} için tahmin hatası: {str(inner_e)}")
+                    # Güven skoru hesapla (mesafeye dayalı)
+                    confidence = 1.0 / (1.0 + np.mean(distances))
+                    
+                    # Maliyet hesapla
+                    cost = self.calculate_costs(dest, numerical_data['duration'])
+                    
+                    # Öneri oluştur
+                    recommendations.append({
+                        'destination': dest,
+                        'confidence': float(confidence),
+                        'cost': cost,
+                        'season': user_preferences.get('season', 'Bilinmiyor'),
+                        'preferred_activity': user_preferences.get('preferred_activity', 'Bilinmiyor'),
+                        'budget': numerical_data['budget'],
+                        'duration': numerical_data['duration'],
+                        'algorithm': 'knn',
+                        'reason': f"Bu destinasyon tercihlerinize {confidence:.2f} güven skoru ile uygundur."
+                    })
+                except Exception as e:
+                    logger.warning(f"Destinasyon {dest} için tahmin hatası: {str(e)}")
                     continue
             
-            # Güven değerine göre sırala ve en iyi top_n tanesini döndür
+            # Güven skoruna göre sırala
             recommendations.sort(key=lambda x: x['confidence'], reverse=True)
             
-            if not recommendations:
-                logger.warning("KNN algoritması hiçbir destinasyon önerisi bulamadı.")
-                return None
-                
+            # En iyi top_n destinasyonu döndür
             return recommendations[:top_n]
-        
+            
         except Exception as e:
             logger.error(f"Tahmin hatası: {str(e)}")
-            import traceback
-            logger.error(traceback.format_exc())
             return None
     
     def predict_top_n(self, user_preferences, top_n=5):
