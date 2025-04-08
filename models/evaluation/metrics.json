@@ -1,0 +1,57 @@
+[
+    {
+        "Model": "IDDFS",
+        "Accuracy": 0.4503333333333333,
+        "Balanced Accuracy": 0.4827099723738459,
+        "Precision": 0.5264012157671794,
+        "Recall": 0.4503333333333333,
+        "F1 Score": 0.4058628532497059,
+        "Avg Confidence": 0.5105633333333334,
+        "Training Time (s)": 136.46299958229065,
+        "Inference Time (ms)": 6.997066179911296
+    },
+    {
+        "Model": "KNN",
+        "Accuracy": 0.36866666666666664,
+        "Balanced Accuracy": 0.41904378410816595,
+        "Precision": 0.6625051968506231,
+        "Recall": 0.36866666666666664,
+        "F1 Score": 0.317356734763045,
+        "Avg Confidence": 0.1448556466030288,
+        "Training Time (s)": 3.5713374614715576,
+        "Inference Time (ms)": 14.600782632827759
+    },
+    {
+        "Model": "Decision Tree",
+        "Accuracy": 0.17833333333333334,
+        "Balanced Accuracy": 0.2,
+        "Precision": 0.031802777777777784,
+        "Recall": 0.17833333333333334,
+        "F1 Score": 0.05397925506836399,
+        "Avg Confidence": 1.0,
+        "Training Time (s)": 16.189852476119995,
+        "Inference Time (ms)": 10.406694332758585
+    },
+    {
+        "Model": "Genetic Algorithm",
+        "Accuracy": 0.14833333333333334,
+        "Balanced Accuracy": 0.2,
+        "Precision": 0.02200277777777778,
+        "Recall": 0.14833333333333334,
+        "F1 Score": 0.038321238509917754,
+        "Avg Confidence": 0.9394185791003856,
+        "Training Time (s)": 359.0886082649231,
+        "Inference Time (ms)": 1.5061607360839844
+    },
+    {
+        "Model": "A* Search",
+        "Accuracy": 0.18233333333333332,
+        "Balanced Accuracy": 0.2,
+        "Precision": 0.03324544444444444,
+        "Recall": 0.18233333333333332,
+        "F1 Score": 0.05623700780001879,
+        "Avg Confidence": 0.18835678234838896,
+        "Training Time (s)": 1.818525791168213,
+        "Inference Time (ms)": 2.432603359222412
+    }
+]

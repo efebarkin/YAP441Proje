@@ -105,7 +105,7 @@ def get_recommendation():
         if selected_algorithm == 'decision_tree' and 'decision_tree' in models and models['decision_tree'] is not None:
             app.logger.info("Decision Tree modeli ile öneri yapılıyor...")
             try:
-                recommendations = models['decision_tree'].predict_top_n(user_preferences, top_n=10)
+                recommendations = models['decision_tree'].predict_top_n(user_preferences, top_n=20)
                 app.logger.info(f"Decision Tree modeli ile {len(recommendations)} öneri bulundu")
             except Exception as e:
                 app.logger.error(f"Decision Tree modeli hatası: {str(e)}")
@@ -114,7 +114,7 @@ def get_recommendation():
         elif selected_algorithm == 'knn' and 'knn' in models and models['knn'] is not None:
             app.logger.info("KNN modeli ile öneri yapılıyor...")
             try:
-                recommendations = models['knn'].predict_top_n(user_preferences, top_n=10)
+                recommendations = models['knn'].predict_top_n(user_preferences, top_n=20)
                 app.logger.info(f"KNN modeli ile {len(recommendations)} öneri bulundu")
             except Exception as e:
                 app.logger.error(f"KNN modeli hatası: {str(e)}")
@@ -123,11 +123,11 @@ def get_recommendation():
         elif selected_algorithm == 'genetic' and 'genetic_algorithm' in models and models['genetic_algorithm'] is not None:
             app.logger.info("Genetik Algoritma modeli ile öneri yapılıyor...")
             try:
-                ga_recommendations = models['genetic_algorithm'].predict(user_preferences, population_size=20, generations=30)
+                ga_recommendations = models['genetic_algorithm'].predict(user_preferences, top_n=20, population_size=50, generations=50)
                 if isinstance(ga_recommendations, dict):
                     recommendations = [ga_recommendations]
                 else:
-                    recommendations = ga_recommendations[:10] if len(ga_recommendations) > 10 else ga_recommendations
+                    recommendations = ga_recommendations[:20] if len(ga_recommendations) > 20 else ga_recommendations
                 app.logger.info(f"Genetik Algoritma modeli ile {len(recommendations)} öneri bulundu")
             except Exception as e:
                 app.logger.error(f"Genetik Algoritma hatası: {str(e)}")
@@ -136,11 +136,11 @@ def get_recommendation():
         elif selected_algorithm == 'iterative_deepening' and 'iddfs' in models and models['iddfs'] is not None:
             app.logger.info("IDDFS modeli ile öneri yapılıyor...")
             try:
-                iddfs_recommendations = models['iddfs'].predict(user_preferences, max_depth=10)
+                iddfs_recommendations = models['iddfs'].predict(user_preferences, top_n=20, max_depth=15)
                 if isinstance(iddfs_recommendations, dict):
                     recommendations = [iddfs_recommendations]
                 else:
-                    recommendations = iddfs_recommendations[:10] if len(iddfs_recommendations) > 10 else iddfs_recommendations
+                    recommendations = iddfs_recommendations[:20] if len(iddfs_recommendations) > 20 else iddfs_recommendations
                 app.logger.info(f"IDDFS modeli ile {len(recommendations)} öneri bulundu")
             except Exception as e:
                 app.logger.error(f"IDDFS hatası: {str(e)}")
@@ -149,11 +149,11 @@ def get_recommendation():
         elif selected_algorithm == 'a_star' and 'a_star' in models and models['a_star'] is not None:
             app.logger.info("A* modeli ile öneri yapılıyor...")
             try:
-                a_star_recommendations = models['a_star'].predict(user_preferences, top_n=10)
+                a_star_recommendations = models['a_star'].predict(user_preferences, top_n=20)
                 if isinstance(a_star_recommendations, dict):
                     recommendations = [a_star_recommendations]
                 else:
-                    recommendations = a_star_recommendations[:10] if len(a_star_recommendations) > 10 else a_star_recommendations
+                    recommendations = a_star_recommendations[:20] if len(a_star_recommendations) > 20 else a_star_recommendations
                 app.logger.info(f"A* modeli ile {len(recommendations)} öneri bulundu")
             except Exception as e:
                 app.logger.error(f"A* hatası: {str(e)}")
@@ -165,9 +165,14 @@ def get_recommendation():
             recommendations = create_default_recommendations()
             app.logger.info(f"Varsayılan olarak {len(recommendations)} öneri oluşturuldu")
         
-        # Algoritma bilgisini her öneri için ekle
+        # Algoritma bilgisini her öneri için ekle ve confidence değerini algorithm_confidence olarak yeniden adlandır
         for rec in recommendations:
             rec['algorithm'] = selected_algorithm
+            # Eğer confidence varsa, algorithm_confidence olarak yeniden adlandır
+            if 'confidence' in rec:
+                rec['algorithm_confidence'] = rec['confidence']
+                # Orijinal confidence alanını tutmaya gerek yok
+                # del rec['confidence']
             
         app.logger.info(f"Toplam {len(recommendations)} öneri bulundu")
         

@@ -700,8 +700,18 @@ class ModelEvaluator:
 
 # Example Usage (if run as a script)
 if __name__ == "__main__":
-    # Load your data
-    DATA_FILE = 'models/synthetic_vacation_data.csv' # Adjust path if needed
+    # Load your data - try different paths based on where the script is run from
+    # First try the path assuming we're in the project root
+    DATA_FILE = 'models/synthetic_vacation_data.csv'
+    
+    # If file doesn't exist, try the path assuming we're in the models directory
+    if not os.path.exists(DATA_FILE):
+        DATA_FILE = 'synthetic_vacation_data.csv'
+        
+    # If still not found, try the data directory
+    if not os.path.exists(DATA_FILE):
+        DATA_FILE = '../data/synthetic_vacation_data.csv'
+    
     try:
         main_df = pd.read_csv(DATA_FILE)
         logger.info(f"Data loaded successfully from {DATA_FILE}")

@@ -205,24 +205,41 @@ export default {
     
     const getDestinationImage = (destination) => {
       // Destinasyona göre arka plan resmi seç
-      const images = {
-        'İstanbul': 'url(https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
-        'Antalya': 'url(https://images.unsplash.com/photo-1584132967334-10e028bd69f7?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
-        'Bodrum': 'url(https://images.unsplash.com/photo-1600240644455-fd509335e9d8?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
-        'Kapadokya': 'url(https://images.unsplash.com/photo-1527838832700-5059252407fa?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1298&q=80)',
-        'Uludağ': 'url(https://images.unsplash.com/photo-1605540436563-5bca919ae766?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1169&q=80)',
-        'Sarıkamış': 'url(https://images.unsplash.com/photo-1551698618-1dfe5d97d256?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
-        'Çanakkale': 'url(https://images.unsplash.com/photo-1600598439902-40408abc471d?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
-        'Samsun': 'url(https://images.unsplash.com/photo-1596627116790-af6f96d60f2c?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
-        'Pamukkale': 'url(https://images.unsplash.com/photo-1589561454226-796a8aa89b05?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1169&q=80)',
-        'Marmaris': 'url(https://images.unsplash.com/photo-1531212259128-7a25618fd21c?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1074&q=80)',
-        'Fethiye': 'url(https://images.unsplash.com/photo-1605146075582-e31ba66a0ffc?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
-        'Çeşme': 'url(https://images.unsplash.com/photo-1596463059283-da257325bab8?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)',
-        'Alaçatı': 'url(https://images.unsplash.com/photo-1584132915807-fd1f5fbc078f?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)'
-      };
+      let backgroundImage;
       
-      // Eğer destinasyon için özel bir resim yoksa varsayılan resmi kullan
-      return images[destination] || 'url(https://images.unsplash.com/photo-1517760444937-f6397edcbbcd?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)';
+      // Destinasyona göre arka plan resmini belirle
+      switch(destination) {
+        case 'Antalya':
+          backgroundImage = 'url(/img/Antalya.png)';
+          break;
+        case 'Bodrum':
+          backgroundImage = 'url(/img/bodrum.png)';
+          break;
+        case 'Kapadokya':
+          backgroundImage = 'url(/img/kapadokya.png)';
+          break;
+        case 'Uludağ':
+          backgroundImage = 'url(/img/uludag.png)';
+          break;
+        case 'Sarıkamış':
+          backgroundImage = 'url(/img/sarikamis.png)';
+          break;
+        case 'İstanbul':
+          backgroundImage = 'url(https://images.unsplash.com/photo-1524231757912-21f4fe3a7200?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)';
+          break;
+        case 'Çanakkale':
+          backgroundImage = 'url(https://images.unsplash.com/photo-1600598439902-40408abc471d?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)';
+          break;
+        default:
+          backgroundImage = 'url(https://images.unsplash.com/photo-1517760444937-f6397edcbbcd?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=1170&q=80)';
+      }
+      
+      // Style objesi döndür
+      return {
+        backgroundImage: backgroundImage,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      };
     };
     
     onMounted(() => {
