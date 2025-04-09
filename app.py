@@ -174,6 +174,11 @@ def get_recommendation():
                 # Orijinal confidence alanını tutmaya gerek yok
                 # del rec['confidence']
             
+            # Eğer preferred_activity varsa, activity olarak yeniden adlandır
+            if 'preferred_activity' in rec:
+                rec['activity'] = rec['preferred_activity']
+                del rec['preferred_activity']
+            
         app.logger.info(f"Toplam {len(recommendations)} öneri bulundu")
         
         return jsonify({

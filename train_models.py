@@ -455,9 +455,6 @@ def main():
         logger.info("Veri bulunamadı, yeni veri üretiliyor...")
         df = generate_data()
 
-    # Modelleri değerlendir (eğitim yapmadan)
-    # evaluate_all_models_without_training(df)
-    
     # Tüm modelleri tek seferde eğit ve karşılaştır
     train_a_star(df)
     # train_genetic_algorithm(df)

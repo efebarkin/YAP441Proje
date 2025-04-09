@@ -43,25 +43,58 @@
             </div>
             <div class="card-content">
               <div class="recommendation-details">
-                <div class="detail-item">
-                  <span class="detail-label">Sezon</span>
-                  <span class="detail-value">{{ recommendation.season }}</span>
+                <!-- Temel Bilgiler -->
+                <div class="detail-section">
+                  <h4 class="section-title">Temel Bilgiler</h4>
+                  <div class="detail-item">
+                    <span class="detail-label">Sezon</span>
+                    <span class="detail-value">{{ recommendation.season }}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Aktivite</span>
+                    <span class="detail-value">{{ recommendation.activity }}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Açıklama</span>
+                    <span class="detail-value">{{ recommendation.explanation || getDestinationDescription(recommendation.destination, recommendation.season) }}</span>
+                  </div>
                 </div>
-                <div class="detail-item">
-                  <span class="detail-label">Aktivite</span>
-                  <span class="detail-value">{{ recommendation.activity }}</span>
+                
+                <!-- Önerilen Aktiviteler -->
+                <div class="detail-section">
+                  <h4 class="section-title">Önerilen Aktiviteler</h4>
+                  <ul class="activities-list">
+                    <li v-for="(activity, idx) in getDestinationActivities(recommendation.destination, recommendation.season)" :key="idx">
+                      {{ activity }}
+                    </li>
+                  </ul>
                 </div>
-                <div v-if="recommendation.costs && recommendation.costs.hotel_price" class="detail-item">
-                  <span class="detail-label">Otel Fiyatı</span>
-                  <span class="detail-value">{{ formatPrice(recommendation.costs.hotel_price) }} TL/gün</span>
+                
+                <!-- Maliyet Bilgileri -->
+                <div class="detail-section">
+                  <h4 class="section-title">Maliyet Bilgileri</h4>
+                  <div v-if="recommendation.costs && recommendation.costs.hotel_price" class="detail-item">
+                    <span class="detail-label">Otel Fiyatı</span>
+                    <span class="detail-value">{{ formatPrice(recommendation.costs.hotel_price) }} TL/gün</span>
+                  </div>
+                  <div v-if="recommendation.costs && recommendation.costs.flight_cost" class="detail-item">
+                    <span class="detail-label">Uçak Bileti</span>
+                    <span class="detail-value">{{ formatPrice(recommendation.costs.flight_cost) }} TL</span>
+                  </div>
+                  <div v-if="recommendation.costs && recommendation.costs.total_cost" class="detail-item">
+                    <span class="detail-label">Toplam Maliyet</span>
+                    <span class="detail-value">{{ formatPrice(recommendation.costs.total_cost) }} TL</span>
+                  </div>
                 </div>
-                <div v-if="recommendation.costs && recommendation.costs.flight_cost" class="detail-item">
-                  <span class="detail-label">Uçak Bileti</span>
-                  <span class="detail-value">{{ formatPrice(recommendation.costs.flight_cost) }} TL</span>
-                </div>
-                <div v-if="recommendation.costs && recommendation.costs.total_cost" class="detail-item">
-                  <span class="detail-label">Toplam Maliyet</span>
-                  <span class="detail-value">{{ formatPrice(recommendation.costs.total_cost) }} TL</span>
+                
+                <!-- Ziyaret Edilecek Yerler -->
+                <div class="detail-section">
+                  <h4 class="section-title">Ziyaret Edilecek Yerler</h4>
+                  <ul class="places-list">
+                    <li v-for="(place, idx) in getDestinationPlaces(recommendation.destination)" :key="idx">
+                      {{ place }}
+                    </li>
+                  </ul>
                 </div>
               </div>
               
@@ -203,6 +236,264 @@ export default {
       return 'low'
     }
     
+    const getDestinationDescription = (destination, season) => {
+      // Destinasyon ve sezona göre açıklama
+      const descriptions = {
+        "Antalya": {
+          "Yaz": "Antalya, yaz mevsiminde muhteşem plajları, berrak denizi ve sıcak iklimi ile mükemmel bir tatil destinasyonudur. Akdeniz'in incisi olarak bilinen bu şehir, tarihi ve doğal güzellikleriyle de ziyaretçilerini büyüler.",
+          "İlkbahar": "İlkbaharda Antalya, ılıman hava, çiçeklenmiş bahçeler ve daha az kalabalık ile ideal bir ziyaret zamanıdır. Tarihi yerler ve doğal güzellikler bu mevsimde daha rahat keşfedilebilir.",
+          "Sonbahar": "Sonbaharda Antalya, yaz sıcaklığının yerini tatlı bir serinliğe bıraktığı, deniz suyunun hala yüzmeye uygun olduğu harika bir dönemdir. Turistlerin azalmasıyla daha sakin bir tatil yapabilirsiniz.",
+          "Kış": "Kış aylarında Antalya, ılıman Akdeniz iklimi sayesinde diğer bölgelere göre daha sıcaktır. Kar görmek için Saklıkent kayak merkezine çıkabilir, şehir merkezinde ise tarihi ve kültürel geziler yapabilirsiniz."
+        },
+        "Bodrum": {
+          "Yaz": "Bodrum, yaz aylarında canlı gece hayatı, lüks marinalar ve muhteşem koylarıyla ünlüdür. Turkuaz renkli denizi ve beyaz evleriyle Ege'nin en popüler tatil destinasyonlarından biridir.",
+          "İlkbahar": "İlkbaharda Bodrum, çiçeklenmiş badem ağaçları ve yeşillenmiş doğasıyla görülmeye değerdir. Kalabalıktan uzak, sakin bir tatil için ideal bir zamandır.",
+          "Sonbahar": "Sonbaharda Bodrum, yaz kalabalığının azaldığı, deniz suyunun hala ılık olduğu ve fiyatların daha uygun hale geldiği bir dönemdir. Sakin bir tatil için mükemmel bir seçimdir.",
+          "Kış": "Kış aylarında Bodrum, sakin ve huzurlu bir atmosfere bürünür. Yağmurlu günlerde tarihi yerler ziyaret edilebilir, güneşli günlerde ise sahil yürüyüşleri yapılabilir."
+        },
+        "Kapadokya": {
+          "Yaz": "Yazın Kapadokya, erken saatlerde yapılan balon turları ve akşam serinliğinde vadilerde yapılan yürüyüşlerle keşfedilebilir. Gündüz sıcaklığı yüksek olabilir, bu nedenle aktivitelerinizi sabah ve akşam saatlerine planlayın.",
+          "İlkbahar": "İlkbahar, Kapadokya'yı ziyaret etmek için en ideal mevsimdir. Yeşillenmiş vadiler, çiçeklenmiş ağaçlar ve ılıman hava, peri bacalarının büyüleyici manzarasına ayrı bir güzellik katar.",
+          "Sonbahar": "Sonbaharda Kapadokya, altın renkli manzaralar ve berrak gökyüzü sunar. Balon turları için mükemmel hava koşulları ve daha az kalabalık, bu mevsimi ziyaret için ideal kılar.",
+          "Kış": "Kışın Kapadokya, karla kaplı peri bacaları ve sıcak şarap eşliğinde şömine başında geçirilen akşamlarla bambaşka bir deneyim sunar. Kar yağışı bölgeye masalsı bir görünüm kazandırır."
+        },
+        "Uludağ": {
+          "Yaz": "Yazın Uludağ, serin havası ve doğa yürüyüşleri için ideal ortamıyla ziyaretçilerini ağırlar. Zengin flora ve faunasıyla doğa tutkunları için mükemmel bir destinasyondur.",
+          "İlkbahar": "İlkbaharda Uludağ, eriyen karlar ve çiçeklenen bitki örtüsüyle canlanır. Doğa yürüyüşleri ve fotoğrafçılık için harika bir zamandır.",
+          "Sonbahar": "Sonbaharda Uludağ, rengarenk yapraklarla bezeli ormanları ve berrak havası ile görülmeye değerdir. Kalabalıktan uzak, huzurlu bir tatil için idealdir.",
+          "Kış": "Kışın Uludağ, Türkiye'nin en popüler kayak merkezlerinden biridir. Kaliteli pistleri, lüks otelleri ve canlı atmosferiyle kış sporları tutkunlarının vazgeçilmez adresidir."
+        },
+        "Sarıkamış": {
+          "Yaz": "Yazın Sarıkamış, serin havası ve el değmemiş doğasıyla şehir hayatından kaçmak isteyenler için ideal bir destinasyondur. Çam ormanları arasında yapılan yürüyüşler ve kamp aktiviteleri popülerdir.",
+          "İlkbahar": "İlkbaharda Sarıkamış, eriyen karlar ve yeşillenen doğasıyla canlanır. Doğa fotoğrafçılığı ve kuş gözlemciliği için harika bir zamandır.",
+          "Sonbahar": "Sonbaharda Sarıkamış, altın sarısı ve kızıl tonlarındaki çam ormanlarıyla görsel bir şölen sunar. Sakin bir atmosferde doğa yürüyüşleri yapabilirsiniz.",
+          "Kış": "Kışın Sarıkamış, kristal kar kalitesi ve uzun pistleriyle kayak tutkunlarının cennetidir. Dünyaca ünlü çam ormanları arasında kayak yapma deneyimi benzersizdir."
+        }
+      };
+      
+      // Eğer belirtilen destinasyon ve sezon için açıklama varsa onu döndür, yoksa genel bir açıklama döndür
+      return descriptions[destination]?.[season] || `${destination}, ${season} mevsiminde harika bir tatil destinasyonudur.`;
+    }
+    
+    const getDestinationActivities = (destination, season) => {
+      // Destinasyon ve sezona göre önerilen aktiviteler
+      const activities = {
+        "Antalya": {
+          "Yaz": [
+            "Konyaaltı ve Lara plajlarında deniz keyfi",
+            "Kaleiçi tarihi bölgesini keşfetme",
+            "Düden Şelalesi ziyareti",
+            "Tekne turları ile koyları keşfetme",
+            "Aspendos Antik Tiyatrosu gezisi"
+          ],
+          "İlkbahar": [
+            "Olimpos Antik Kenti ziyareti",
+            "Termessos Antik Kenti yürüyüşü",
+            "Köprülü Kanyon'da rafting",
+            "Phaselis Antik Kenti gezisi",
+            "Antalya Müzesi ziyareti"
+          ],
+          "Sonbahar": [
+            "Likya Yolu'nda trekking",
+            "Side Antik Kenti gezisi",
+            "Alanya Kalesi ziyareti",
+            "Manavgat Şelalesi gezisi",
+            "Kaş ve Kalkan'da sakin tatil"
+          ],
+          "Kış": [
+            "Saklıkent'te kayak",
+            "Kaplıca ve hamam keyfi",
+            "Alışveriş merkezlerinde alışveriş",
+            "Müze ve galeri ziyaretleri",
+            "Yerel mutfağı keşfetme"
+          ]
+        },
+        "Bodrum": {
+          "Yaz": [
+            "Gümbet ve Bitez plajlarında deniz keyfi",
+            "Bodrum Kalesi ve Sualtı Arkeoloji Müzesi ziyareti",
+            "Tekne turları ile koyları keşfetme",
+            "Gece kulüplerinde eğlence",
+            "Türkbükü ve Gündoğan'da lüks plajlarda vakit geçirme"
+          ],
+          "İlkbahar": [
+            "Antik Tiyatro ziyareti",
+            "Myndos Kapısı gezisi",
+            "Pedasa Antik Kenti yürüyüşü",
+            "Bisiklet turları",
+            "Zeki Müren Sanat Müzesi ziyareti"
+          ],
+          "Sonbahar": [
+            "Akyarlar ve Karaincir plajlarında sakin deniz keyfi",
+            "Bodrum Pazarı'nda alışveriş",
+            "Gulet tekne turları",
+            "Yerel şarap tadımı",
+            "Yalıkavak Marina'da yürüyüş"
+          ],
+          "Kış": [
+            "Spa ve wellness merkezlerinde rahatlama",
+            "Yerel mutfağı keşfetme",
+            "Sanat galerileri ziyareti",
+            "Kış manzarası eşliğinde sahil yürüyüşleri",
+            "Cafe ve restoranlarda keyifli vakit geçirme"
+          ]
+        },
+        "Kapadokya": {
+          "Yaz": [
+            "Sabah sıcak hava balonu turları",
+            "Yeraltı şehirlerini keşfetme",
+            "ATV turları ile vadileri gezme",
+            "Açık hava müzelerini ziyaret",
+            "Güvercinlik Vadisi'nde gün batımı izleme"
+          ],
+          "İlkbahar": [
+            "Kızılçukur Vadisi'nde yürüyüş",
+            "Ihlara Vadisi gezisi",
+            "Çanak-çömlek atölyelerinde aktiviteler",
+            "Ürgüp ve Avanos gezileri",
+            "Balon turları"
+          ],
+          "Sonbahar": [
+            "Göreme Açık Hava Müzesi ziyareti",
+            "Üç Güzeller ve Devrent Vadisi gezisi",
+            "Uçhisar Kalesi'nden manzara seyretme",
+            "Yerel şarap mahzenlerini ziyaret",
+            "At turları"
+          ],
+          "Kış": [
+            "Karlı manzarada balon turu",
+            "Kaya otel deneyimi",
+            "Sıcak şarap eşliğinde şömine başında vakit geçirme",
+            "Karla kaplı peri bacaları fotoğrafçılığı",
+            "Çömlek yapımı atölyeleri"
+          ]
+        },
+        "Uludağ": {
+          "Yaz": [
+            "Doğa yürüyüşleri ve trekking",
+            "Dağ bisikleti turları",
+            "Kamp ve piknik aktiviteleri",
+            "Fotoğrafçılık",
+            "Flora ve fauna gözlemciliği"
+          ],
+          "İlkbahar": [
+            "Botanik turları",
+            "Kuş gözlemciliği",
+            "Dağ patikalarında yürüyüş",
+            "Milli park gezisi",
+            "Şelale ziyaretleri"
+          ],
+          "Sonbahar": [
+            "Sonbahar renkleri fotoğrafçılığı",
+            "Mantar toplama turları",
+            "Orman yürüyüşleri",
+            "Teleferik ile manzara seyretme",
+            "Doğa kampı"
+          ],
+          "Kış": [
+            "Kayak ve snowboard",
+            "Kar motoru safari",
+            "Kızak aktiviteleri",
+            "Après-ski eğlenceleri",
+            "Kış sporları dersleri"
+          ]
+        },
+        "Sarıkamış": {
+          "Yaz": [
+            "Sarıçam ormanlarında doğa yürüyüşleri",
+            "Kamp aktiviteleri",
+            "Dağ bisikleti turları",
+            "Piknik",
+            "Yaban hayatı gözlemciliği"
+          ],
+          "İlkbahar": [
+            "Bahar çiçekleri fotoğrafçılığı",
+            "Kuş gözlemciliği",
+            "Kar sularıyla beslenen derelerde balık tutma",
+            "Botanik turları",
+            "Kars şehir merkezi gezisi"
+          ],
+          "Sonbahar": [
+            "Sonbahar renkleri fotoğrafçılığı",
+            "Ani Harabeleri ziyareti",
+            "Çıldır Gölü gezisi",
+            "Kars peynir tadımı",
+            "Tarihi Rus evleri turu"
+          ],
+          "Kış": [
+            "Kristal karla kaplı pistlerde kayak",
+            "Snowboard",
+            "Kar yürüyüşleri",
+            "Kızak aktiviteleri",
+            "Kars'ta kış manzaraları fotoğrafçılığı"
+          ]
+        }
+      };
+      
+      // Eğer belirtilen destinasyon ve sezon için aktiviteler varsa onları döndür, yoksa varsayılan aktiviteleri döndür
+      return activities[destination]?.[season] || [
+        "Yerel turistik yerleri ziyaret etme",
+        "Yerel mutfağı keşfetme",
+        "Doğa yürüyüşleri",
+        "Fotoğraf çekme",
+        "Kültürel etkinliklere katılma"
+      ];
+    }
+    
+    const getDestinationPlaces = (destination) => {
+      // Destinasyona göre ziyaret edilecek yerler
+      const places = {
+        'Antalya': [
+          'Kaleiçi (Tarihi Merkez)',
+          'Düden Şelalesi',
+          'Aspendos Antik Tiyatrosu',
+          'Konyaaltı Plajı',
+          'Antalya Müzesi',
+          'Perge Antik Kenti',
+          'Olimpos Antik Kenti ve Yanartaş'
+        ],
+        'Bodrum': [
+          'Bodrum Kalesi ve Sualtı Arkeoloji Müzesi',
+          'Antik Tiyatro',
+          'Gümbet Plajı',
+          'Bitez Koyu',
+          'Yalıkavak Marina',
+          'Myndos Kapısı',
+          'Zeki Müren Sanat Müzesi'
+        ],
+        'Kapadokya': [
+          'Göreme Açık Hava Müzesi',
+          'Üç Güzeller',
+          'Derinkuyu Yeraltı Şehri',
+          'Uçhisar Kalesi',
+          'Paşabağı (Keşişler Vadisi)',
+          'Ihlara Vadisi',
+          'Kızılçukur Vadisi'
+        ],
+        'Uludağ': [
+          'Uludağ Milli Parkı',
+          'Kayak Merkezi',
+          'Teleferik',
+          'Çobankaya',
+          'Kirazlıyayla',
+          'Bakacak Mevkii',
+          'Cennetkaya'
+        ],
+        'Sarıkamış': [
+          'Sarıkamış Kayak Merkezi',
+          'Katerina Av Köşkü',
+          'Sarıçam Ormanları',
+          'Şehitler Anıtı',
+          'Kars Kalesi',
+          'Ani Harabeleri',
+          'Çıldır Gölü'
+        ]
+      };
+      
+      // Eğer belirtilen destinasyon için yerler varsa onları döndür, yoksa boş dizi döndür
+      return places[destination] || [];
+    }
+    
     const getDestinationImage = (destination) => {
       // Destinasyona göre arka plan resmi seç
       let backgroundImage;
@@ -256,7 +547,10 @@ export default {
       getAlgorithmDescription,
       formatPrice,
       getConfidenceClass,
-      getDestinationImage
+      getDestinationImage,
+      getDestinationDescription,
+      getDestinationActivities,
+      getDestinationPlaces
     }
   }
 }
@@ -456,6 +750,26 @@ export default {
   margin-bottom: 1.5rem;
 }
 
+.detail-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #e9ecef;
+}
+
+.detail-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #4361ee;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e9ecef;
+}
+
 .detail-item {
   display: flex;
   justify-content: space-between;
@@ -478,6 +792,33 @@ export default {
 .detail-value {
   color: #343a40;
   font-weight: 600;
+  text-align: right;
+  flex: 1;
+  margin-left: 1rem;
+}
+
+.activities-list, .places-list {
+  list-style-type: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.activities-list li, .places-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px dashed #f0f0f0;
+  display: flex;
+  align-items: center;
+}
+
+.activities-list li:before, .places-list li:before {
+  content: '•';
+  color: #4361ee;
+  font-weight: bold;
+  margin-right: 0.5rem;
+}
+
+.activities-list li:last-child, .places-list li:last-child {
+  border-bottom: none;
 }
 
 .confidence-details {

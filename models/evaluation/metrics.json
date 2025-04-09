@@ -1,47 +1,36 @@
 [
     {
-        "Model": "IDDFS",
-        "Accuracy": 0.4503333333333333,
-        "Balanced Accuracy": 0.4827099723738459,
-        "Precision": 0.5264012157671794,
-        "Recall": 0.4503333333333333,
-        "F1 Score": 0.4058628532497059,
-        "Avg Confidence": 0.5105633333333334,
-        "Training Time (s)": 136.46299958229065,
-        "Inference Time (ms)": 6.997066179911296
-    },
-    {
         "Model": "KNN",
-        "Accuracy": 0.36866666666666664,
-        "Balanced Accuracy": 0.41904378410816595,
-        "Precision": 0.6625051968506231,
-        "Recall": 0.36866666666666664,
-        "F1 Score": 0.317356734763045,
-        "Avg Confidence": 0.1448556466030288,
-        "Training Time (s)": 3.5713374614715576,
-        "Inference Time (ms)": 14.600782632827759
-    },
-    {
-        "Model": "Decision Tree",
-        "Accuracy": 0.17833333333333334,
-        "Balanced Accuracy": 0.2,
-        "Precision": 0.031802777777777784,
-        "Recall": 0.17833333333333334,
-        "F1 Score": 0.05397925506836399,
-        "Avg Confidence": 1.0,
-        "Training Time (s)": 16.189852476119995,
-        "Inference Time (ms)": 10.406694332758585
+        "Accuracy": 0.21433333333333332,
+        "Balanced Accuracy": 0.22346835637737744,
+        "Precision": 0.23571058523352842,
+        "Recall": 0.21433333333333332,
+        "F1 Score": 0.21530619680662755,
+        "Avg Confidence": 0.7725182522351767,
+        "Training Time (s)": 3.5488412380218506,
+        "Inference Time (ms)": 11.828140656153362
     },
     {
         "Model": "Genetic Algorithm",
+        "Accuracy": 0.16466666666666666,
+        "Balanced Accuracy": 0.2183177570093458,
+        "Precision": 0.17055152461690076,
+        "Recall": 0.16466666666666666,
+        "F1 Score": 0.06841097196285226,
+        "Avg Confidence": 0.9708411418593581,
+        "Training Time (s)": 348.0542023181915,
+        "Inference Time (ms)": 1.5542145570119221
+    },
+    {
+        "Model": "IDDFS",
         "Accuracy": 0.14833333333333334,
         "Balanced Accuracy": 0.2,
         "Precision": 0.02200277777777778,
         "Recall": 0.14833333333333334,
         "F1 Score": 0.038321238509917754,
-        "Avg Confidence": 0.9394185791003856,
-        "Training Time (s)": 359.0886082649231,
-        "Inference Time (ms)": 1.5061607360839844
+        "Avg Confidence": 0.7609035415602966,
+        "Training Time (s)": 152.79313325881958,
+        "Inference Time (ms)": 6.679931163787842
     },
     {
         "Model": "A* Search",
@@ -50,8 +39,19 @@
         "Precision": 0.03324544444444444,
         "Recall": 0.18233333333333332,
         "F1 Score": 0.05623700780001879,
-        "Avg Confidence": 0.18835678234838896,
-        "Training Time (s)": 1.818525791168213,
-        "Inference Time (ms)": 2.432603359222412
+        "Avg Confidence": 0.7564989697949107,
+        "Training Time (s)": 1.4721734523773193,
+        "Inference Time (ms)": 1.898532231648763
+    },
+    {
+        "Model": "Decision Tree",
+        "Accuracy": 0.189,
+        "Balanced Accuracy": 0.189555283975384,
+        "Precision": 0.21088430394527985,
+        "Recall": 0.189,
+        "F1 Score": 0.1933473453748883,
+        "Avg Confidence": 0.9872123786041698,
+        "Training Time (s)": 15.279887199401855,
+        "Inference Time (ms)": 10.688698848088581
     }
 ]
